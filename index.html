@@ -848,6 +848,61 @@
   @media (min-width: 1024px) {
     .ask-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); align-items: stretch; }
   }
+  /* Mobile: chat and PDF take turns filling the body. */
+  @media (max-width: 1023px) {
+    .ask-grid { grid-template-columns: 1fr; }
+    .ask-grid .pdf-viewer { display: none; }
+    .ask-grid--showing-pdf .chat { display: none; }
+    .ask-grid--showing-pdf .pdf-viewer { display: grid; }
+  }
+
+  .chat__pdf-toggle {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: .35rem .75rem;
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: var(--size-mono);
+    letter-spacing: .02em;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    transition: border-color .2s var(--ease), color .2s var(--ease);
+  }
+  .chat__pdf-toggle:hover {
+    border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+    color: var(--accent);
+  }
+  @media (min-width: 1024px) {
+    .chat__pdf-toggle { display: none !important; }
+  }
+
+  .ask-pdf-back {
+    position: fixed;
+    bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+    left: 1rem;
+    z-index: 110;
+    padding: .5rem .9rem;
+    background: color-mix(in srgb, var(--bg-card) 90%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-family: var(--font-body);
+    font-size: var(--size-small);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    box-shadow: 0 6px 18px rgba(0,0,0,.3);
+  }
+  .ask-pdf-back[hidden] { display: none; }
+  @media (min-width: 1024px) {
+    .ask-pdf-back { display: none !important; }
+  }
 
   .pdf-viewer {
     border: 1px solid var(--border);
@@ -1025,9 +1080,10 @@
   .chat__msg--pending {
     border-color: transparent;
     background: transparent;
-    padding: .15rem 0;
+    padding: 0;
     border-radius: 0;
     box-shadow: none;
+    margin-top: -.5rem;
   }
 
   /* "Thinking" indicator: a miniature splitflap tile (the brand a-to-x card)
@@ -1036,24 +1092,24 @@
   .thinking {
     display: inline-flex;
     align-items: center;
-    gap: .6rem;
-    padding: .15rem 0;
+    gap: .45rem;
+    padding: 0;
   }
   .thinking__tile {
     position: relative;
     display: inline-block;
-    width: 16px;
-    height: 24px;
+    width: 12px;
+    height: 17px;
     font-family: var(--font-mono);
-    font-size: 18px;
+    font-size: 13px;
     font-weight: 600;
     line-height: 1;
     color: var(--accent);
     background: rgba(255,255,255,.04);
     border: 1px solid rgba(255,255,255,.08);
-    border-radius: 3px;
-    perspective: 200px;
-    -webkit-perspective: 200px;
+    border-radius: 2px;
+    perspective: 160px;
+    -webkit-perspective: 160px;
     overflow: hidden;
     vertical-align: middle;
     flex-shrink: 0;
@@ -1114,7 +1170,7 @@
 
   .thinking__word {
     font-family: var(--font-mono);
-    font-size: var(--size-mono);
+    font-size: 11px;
     letter-spacing: .02em;
     white-space: nowrap;
     background: linear-gradient(
@@ -1496,6 +1552,13 @@
     </button>
   </header>
   <div class="ask-overlay__body" id="ask-app"></div>
+  <button class="ask-pdf-back" id="askPdfBack" type="button" hidden aria-label="Back to chat">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M19 12H5"/>
+      <polyline points="12 19 5 12 12 5"/>
+    </svg>
+    <span>Back to chat</span>
+  </button>
 </aside>
 
 <button class="ask-resume" id="askResume" type="button" hidden>
@@ -2236,6 +2299,13 @@
             <textarea class="chat__input" id="chatInput" placeholder="Ask a question about this document..." rows="2"></textarea>
             <div class="chat__actions">
               <span class="chat__model" title="The language model is running in your browser, on your device.">Llama 3.2 3B, on-device</span>
+              ${hasPdf ? `<button type="button" class="chat__pdf-toggle" id="pdfToggle" aria-label="Show PDF">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                </svg>
+                PDF
+              </button>` : ''}
               <div class="chat__actions-right">
                 <button type="button" class="chat__stop" id="chatStop" hidden>Stop</button>
                 <button type="submit" class="chat__send btn-primary">Send</button>
@@ -2260,8 +2330,24 @@
     document.getElementById('chatStop').addEventListener('click', () => {
       if (llmEngine) llmEngine.interruptGenerate();
     });
+    const pdfToggleBtn = document.getElementById('pdfToggle');
+    if (pdfToggleBtn) pdfToggleBtn.addEventListener('click', () => togglePdfView());
     if (hasPdf) renderPdfStack();
   }
+
+  // Mobile-only: chat and PDF take turns filling the body. Desktop ignores
+  // the class entirely; both panels stay side by side. Citation chip clicks
+  // call togglePdfView(true) so the relevant page comes into view.
+  function togglePdfView(show) {
+    const grid = document.querySelector('.ask-grid');
+    if (!grid) return;
+    const isShowing = grid.classList.contains('ask-grid--showing-pdf');
+    const next = (show === undefined) ? !isShowing : !!show;
+    grid.classList.toggle('ask-grid--showing-pdf', next);
+    const back = document.getElementById('askPdfBack');
+    if (back) back.hidden = !next;
+  }
+  document.getElementById('askPdfBack').addEventListener('click', () => togglePdfView(false));
 
   async function onAsk(e) {
     e.preventDefault();
@@ -2378,8 +2464,12 @@ Answer: The phone number is +1 555-123-4567 [1].`;
         b.addEventListener('click', () => {
           const c = findChunkByMarker(cites, Number(b.dataset.marker));
           if (!c) return;
-          if (pdfDoc) goToPage(c.pageNumber);
-          else        highlightTextSource(asstEl, c.marker);
+          if (pdfDoc) {
+            togglePdfView(true);
+            goToPage(c.pageNumber);
+          } else {
+            highlightTextSource(asstEl, c.marker);
+          }
         });
       });
     } catch (err) {
