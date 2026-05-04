@@ -43,14 +43,14 @@
   · worker-src 'self' blob:
                         — allows the vendored pdf.worker file plus
                           pdfjs's blob-based worker fallback.
-  · 'unsafe-eval'       — pdfjs and pdf-lib both use Function() at
-                          runtime for font / Type1 parsing.
+  · 'unsafe-eval'       . pdfjs uses Function() at runtime for
+                          font and Type1 parsing.
 -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; worker-src 'self' blob:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self';" />
 <meta name="theme-color" content="#08090a" />
 <meta name="color-scheme" content="dark light" />
 <title>Ask · xjmani</title>
-<meta name="description" content="Redact sensitive content from PDFs in your browser. Text outside redactions stays selectable and searchable. Nothing is uploaded." />
+<meta name="description" content="Ask questions about a PDF in your browser. The model runs on your device. Nothing about your document touches a server." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
@@ -953,7 +953,6 @@
     btn.addEventListener('click', () => {
       const map = {
         network:   'F12, Network tab, drop a PDF. Nothing fires after page load.',
-        redaction: 'Open the export in any PDF reader, press Ctrl+F, search for what you redacted.',
         storage:   'F12, Application, Storage. Only custom patterns are stored, on this device only.',
       };
       toast(map[btn.dataset.verify] || 'Open devtools to verify.');
