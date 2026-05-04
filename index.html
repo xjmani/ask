@@ -970,68 +970,64 @@
     100% { background: color-mix(in srgb, var(--accent) 35%, transparent); }
   }
 
-  .sources {
+  /* Sources list under each answer: one row per citation. Click navigates
+     the PDF viewer to the page (or expands the row inline if no PDF). */
+  .cite-list {
     margin-top: 1rem;
+    padding-top: .85rem;
     border-top: 1px solid var(--border);
-    padding-top: .75rem;
-  }
-  .sources > summary {
-    cursor: pointer;
-    font-family: var(--font-mono);
-    font-size: var(--size-mono);
-    color: var(--text-dim);
-    text-transform: uppercase;
-    letter-spacing: .1em;
-    list-style: none;
-    user-select: none;
-  }
-  .sources > summary::-webkit-details-marker { display: none; }
-  .sources > summary::before {
-    content: '▶';
-    display: inline-block;
-    margin-right: .5rem;
-    transition: transform .2s var(--ease);
-    font-size: 9px;
-    color: var(--accent);
-  }
-  .sources[open] > summary::before { transform: rotate(90deg); }
-  .sources__count {
-    margin-left: .35rem;
-    color: var(--accent);
-  }
-  .sources__list {
-    list-style: none;
-    padding: 0;
-    margin: .75rem 0 0;
     display: flex;
     flex-direction: column;
-    gap: .5rem;
+    gap: .35rem;
   }
-  .source {
+  .cite-row {
+    display: flex;
+    align-items: baseline;
+    gap: .6rem;
+    width: 100%;
+    padding: .5rem .75rem;
+    background: transparent;
     border: 1px solid var(--border);
-    background: var(--bg-raised);
     border-radius: 8px;
-    padding: .75rem .9rem;
-    transition: border-color .25s var(--ease), background .25s var(--ease);
+    text-align: left;
+    cursor: pointer;
+    font-family: var(--font-body);
+    color: var(--text-dim);
+    transition: border-color .2s var(--ease), background .2s var(--ease), color .2s var(--ease);
   }
-  .source__pin {
-    display: inline-block;
+  .cite-row:hover {
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
+    color: var(--text);
+  }
+  .cite-row__num {
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--accent);
-    margin-bottom: .35rem;
-    letter-spacing: .03em;
+    flex-shrink: 0;
+    letter-spacing: .02em;
   }
-  .source__text {
-    margin: 0;
+  .cite-row__page {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-mute);
+    flex-shrink: 0;
+  }
+  .cite-row__preview {
     font-size: var(--size-small);
-    color: var(--text-dim);
-    line-height: 1.55;
-    white-space: pre-wrap;
+    flex: 1 1 0;
+    min-width: 0;
+    line-height: 1.45;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .source.is-cited {
-    border-color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 8%, var(--bg-raised));
+  .cite-row.is-expanded {
+    align-items: flex-start;
+  }
+  .cite-row.is-expanded .cite-row__preview {
+    white-space: pre-wrap;
+    overflow: visible;
   }
 
   .cite-chip {
@@ -2017,31 +2013,32 @@
     };
   }
 
-  function renderTextSources(asstEl, citations) {
-    if (!citations || citations.length === 0) return;
-    const sources = document.createElement('details');
-    sources.className = 'sources';
-    sources.open = true;
-    sources.innerHTML = `
-      <summary>Sources <span class="sources__count">${citations.length}</span></summary>
-      <ol class="sources__list">
-        ${citations.map((c) => `
-          <li class="source" id="source-${asstEl.dataset.msgId}-${c.marker}">
-            <span class="source__pin">[${c.marker}] p.${c.pageNumber}</span>
-            <p class="source__text">${escapeHtml(c.text)}</p>
-          </li>
-        `).join('')}
-      </ol>
-    `;
-    asstEl.appendChild(sources);
+  // Compact preview of a chunk's text for the citation row. Truncates at the
+  // last word boundary inside max chars to avoid mid-word cuts.
+  function makePreview(text, max = 120) {
+    if (!text) return '';
+    let t = text.replace(/\s+/g, ' ').trim();
+    if (t.length === 0) return '';
+    if (t.length <= max) return t;
+    let cut = t.slice(0, max);
+    const lastSpace = cut.lastIndexOf(' ');
+    if (lastSpace > max * 0.6) cut = cut.slice(0, lastSpace);
+    return cut + '…';
   }
 
-  function highlightTextSource(asstEl, marker) {
-    const el = document.getElementById(`source-${asstEl.dataset.msgId}-${marker}`);
-    if (!el) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    el.classList.add('is-cited');
-    setTimeout(() => el.classList.remove('is-cited'), 2200);
+  function renderCiteRows(asstEl, cites) {
+    if (!cites || cites.length === 0) return null;
+    const list = document.createElement('div');
+    list.className = 'cite-list';
+    list.innerHTML = cites.map((c) => `
+      <button type="button" class="cite-row" data-marker="${c.marker}">
+        <span class="cite-row__num">[${c.marker}]</span>
+        <span class="cite-row__page">p.${c.pageNumber}</span>
+        <span class="cite-row__preview">${escapeHtml(makePreview(c.text))}</span>
+      </button>
+    `).join('');
+    asstEl.appendChild(list);
+    return list;
   }
 
   // ---- PDF viewer: continuous stacked pages with text-item highlights ------
@@ -2459,7 +2456,30 @@ Answer: The phone number is +1 555-123-4567 [1].`;
         if (!c) return `[${n}]`;
         return `<button class="cite-chip" data-marker="${c.marker}">[${n}] p.${c.pageNumber}</button>`;
       });
-      if (!pdfDoc) renderTextSources(asstEl, cites);
+
+      // Build the supporting "sources" list under the answer. Show only the
+      // chunks the model actually cited (not everything we retrieved) so the
+      // user can scan the previews and pick which to verify.
+      const usedMarkers = new Set(
+        [...displayText.matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1]))
+      );
+      const usedCites = cites.filter((c) => usedMarkers.has(c.marker));
+      const list = renderCiteRows(asstEl, usedCites);
+      list?.querySelectorAll('.cite-row').forEach((row) => {
+        row.addEventListener('click', () => {
+          const c = findChunkByMarker(cites, Number(row.dataset.marker));
+          if (!c) return;
+          if (pdfDoc) {
+            togglePdfView(true);
+            goToPage(c.pageNumber);
+          } else {
+            const preview = row.querySelector('.cite-row__preview');
+            const expanded = row.classList.toggle('is-expanded');
+            preview.textContent = expanded ? c.text : makePreview(c.text);
+          }
+        });
+      });
+
       answerEl.querySelectorAll('.cite-chip').forEach((b) => {
         b.addEventListener('click', () => {
           const c = findChunkByMarker(cites, Number(b.dataset.marker));
@@ -2467,8 +2487,6 @@ Answer: The phone number is +1 555-123-4567 [1].`;
           if (pdfDoc) {
             togglePdfView(true);
             goToPage(c.pageNumber);
-          } else {
-            highlightTextSource(asstEl, c.marker);
           }
         });
       });
