@@ -589,6 +589,23 @@
   .proof__verify:hover { text-decoration-color: var(--green); }
 
   /* ==========================================================
+     ASK APP CHROME (mount-point children: gate, model card, chat,
+     pdf pane, document sidebar, citation chips). Subsequent tasks
+     fill in the runtime markup; styles live here so the JS only
+     emits semantic HTML.
+     ========================================================== */
+  .webgpu-gate {
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    border-radius: 14px;
+    padding: 1.75rem;
+    color: var(--text-dim);
+  }
+  .webgpu-gate h3 { color: var(--text); margin-top: 0; margin-bottom: .75rem; }
+  .webgpu-gate p { margin: 0 0 .75rem; }
+  .webgpu-gate a { color: var(--accent); }
+
+  /* ==========================================================
      TAKE-IT-HOME. Tool brand color (purple) per spec. Three cards:
      standalone download, self-host, source.
      ========================================================== */
@@ -957,6 +974,24 @@
   const $pickBtn   = document.getElementById('pickBtn');
   const $workspace = document.querySelector('.workspace');
   const $mount     = document.getElementById('ask-app');
+
+  // ---- WebGPU gate ----------------------------------------------------------
+  const hasWebGPU = !!navigator.gpu;
+  if (!hasWebGPU) {
+    $workspace.removeAttribute('hidden');
+    $mount.innerHTML = `
+      <div class="webgpu-gate">
+        <h3>This tool needs WebGPU.</h3>
+        <p>WebGPU is the browser feature that lets the language model run on your GPU instead of a server. Without it, the model can't load.</p>
+        <p>Supported browsers: <strong>Chrome 121+</strong>, <strong>Edge 121+</strong>, <strong>Safari 18+</strong> on macOS Sonoma or newer. Firefox does not yet ship WebGPU on by default.</p>
+        <p><a href="https://caniuse.com/webgpu">Check WebGPU support for your browser.</a></p>
+      </div>
+    `;
+    $drop.setAttribute('aria-disabled', 'true');
+    $drop.style.pointerEvents = 'none';
+    $drop.style.opacity = '0.5';
+    $fileInput.setAttribute('disabled', 'true');
+  }
 
   async function extractText(file) {
     const buf = await file.arrayBuffer();
