@@ -1005,6 +1005,16 @@
     border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
   }
   .chat__msg--assistant { white-space: pre-wrap; }
+  /* Pending state: assistant message is showing the thinking indicator
+     before the first token arrives. Strip bubble chrome so the indicator
+     reads as inline text in the message flow. */
+  .chat__msg--pending {
+    border-color: transparent;
+    background: transparent;
+    padding: .15rem 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
 
   /* "Thinking" indicator: a miniature splitflap tile (the brand a-to-x card)
      cycles random letters while a fun verb cycles next to it. Mirrors the
@@ -1835,6 +1845,20 @@
     }[c]));
   }
 
+  // Keep the messages list pinned to the bottom while the answer streams in,
+  // but only if the user is already near the bottom. This way scrolling up
+  // to read an earlier message doesn't get yanked away by incoming tokens.
+  function scrollMessagesToBottom(force) {
+    const m = document.getElementById('chatMessages');
+    if (!m) return;
+    if (force) {
+      m.scrollTop = m.scrollHeight;
+      return;
+    }
+    const distanceFromBottom = m.scrollHeight - m.scrollTop - m.clientHeight;
+    if (distanceFromBottom < 160) m.scrollTop = m.scrollHeight;
+  }
+
   // ---- "Thinking" indicator: mini splitflap + cycling verb -----------------
   const THINKING_LETTERS = 'abcdefghijklmnopqrstuvwx';
   const THINKING_WORDS = [
@@ -2236,9 +2260,10 @@
     userEl.className = 'chat__msg chat__msg--user';
     userEl.textContent = question;
     messages.appendChild(userEl);
+    scrollMessagesToBottom(true);
 
     const asstEl = document.createElement('div');
-    asstEl.className = 'chat__msg chat__msg--assistant';
+    asstEl.className = 'chat__msg chat__msg--assistant chat__msg--pending';
     asstEl.dataset.msgId = String(Date.now());
     const initialWord = THINKING_WORDS[Math.floor(Math.random() * THINKING_WORDS.length)];
     const answerEl = document.createElement('div');
@@ -2246,7 +2271,7 @@
     answerEl.innerHTML = thinkingMarkup(initialWord);
     asstEl.appendChild(answerEl);
     messages.appendChild(asstEl);
-    asstEl.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    scrollMessagesToBottom(true);
     const stopThinking = startThinking(answerEl);
 
     stop.hidden = false;
@@ -2306,10 +2331,12 @@ Answer: The phone number is +1 555-123-4567 [1].`;
         const delta = chunk.choices?.[0]?.delta?.content || '';
         if (firstToken && delta) {
           stopThinking();
+          asstEl.classList.remove('chat__msg--pending');
           answerEl.textContent = '';
           firstToken = false;
         }
         answerEl.textContent += delta;
+        scrollMessagesToBottom(false);
       }
       const rawText = answerEl.textContent;
       const { prose, quotes } = parseQuotes(rawText);
