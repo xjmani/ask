@@ -1495,6 +1495,58 @@
     }
   }
 
+  // Extract distinctive tokens from a model-generated answer that are likely
+  // to appear verbatim in the source document. Captures phone numbers, emails,
+  // URLs, currency amounts, percentages, dates, alphanumeric IDs, and quoted
+  // phrases. Returns deduplicated string list. Used to drive PDF highlights
+  // without requiring the model to cooperate with a structured quote format.
+  function extractAnswerTokens(answer) {
+    const text = answer || '';
+    const patterns = [
+      /\+?\d[\d\s\-().]{6,}\d/g,                                                   // phone-like
+      /[\w.+-]+@[\w-]+\.[\w.-]+/g,                                                 // email
+      /https?:\/\/[^\s)]+/g,                                                        // URL
+      /\b[A-Z]{0,3}\$\s?\d[\d,]*(?:\.\d+)?\b/g,                                    // money $123 / CA$123
+      /[\$£€¥]\s?\d[\d,]*(?:\.\d+)?/g,                                             // money symbol
+      /\b\d+(?:\.\d+)?\s?%/g,                                                       // percent
+      /\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\s+\d{1,2}(?:,\s*\d{2,4})?/gi,
+      /\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g,                                            // M/D/Y
+      /\b\d{4}-\d{2}-\d{2}\b/g,                                                    // ISO date
+      /["“]([^"”\n]{4,80})["”]/g,                                                  // quoted phrase
+      /\b[A-Z][A-Z0-9]{4,}\b/g,                                                    // alphanumeric IDs (JVFVVZVY-0002)
+    ];
+    const out = new Set();
+    for (const re of patterns) {
+      re.lastIndex = 0;
+      let m;
+      while ((m = re.exec(text)) !== null) {
+        const tok = (m[1] || m[0]).trim();
+        if (tok.length >= 4 && tok.length <= 80) out.add(tok);
+      }
+    }
+    return [...out];
+  }
+
+  // Highlight all token matches found on a single page. Returns true if any
+  // token matched. Used to draw answer-grounded highlights on the cited page.
+  async function highlightAnswerOnPage(pageNumber, tokens) {
+    document.querySelectorAll('.pdf-page__highlights').forEach((o) => { o.innerHTML = ''; });
+    if (!tokens || !tokens.length) return false;
+    const meta = pageMetas.get(pageNumber);
+    if (!meta) return false;
+    const overlay = meta.wrap.querySelector('.pdf-page__highlights');
+    let any = false;
+    for (const tok of tokens) {
+      const found = await findItemsForQuote(pageNumber, tok);
+      if (found && found.items.length) {
+        drawItemsHighlights(overlay, found.items, meta.viewport);
+        any = true;
+      }
+    }
+    if (any) meta.wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return any;
+  }
+
   // Parse `[N]: "verbatim quote"` lines emitted by the model.
   // Returns: { prose: string, quotes: Map<marker, text> }
   function parseQuotes(answer) {
@@ -1854,20 +1906,22 @@
       const { prose, quotes } = parseQuotes(rawText);
       const displayText = prose || rawText;
 
-      // Auto-highlight using the model's quote for the top citation, if any.
-      if (pdfDoc && quotes.size > 0) {
-        const firstMarker = [...quotes.keys()].sort((a, b) => a - b)[0];
-        const firstCite = findChunkByMarker(cites, firstMarker);
-        if (firstCite) {
-          const ok = await highlightQuote(firstCite.pageNumber, quotes.get(firstMarker));
-          if (!ok) goToPage(firstCite.pageNumber, firstCite); // fallback
-        }
-      } else if (pdfDoc && cites.length > 0) {
-        goToPage(cites[0].pageNumber, cites[0]);
+      // Build the token list to search for in the page: extracted distinctive
+      // tokens from the answer prose, plus any verbatim quotes the model
+      // emitted (rare with the simple prompt, but free if present).
+      const tokens = extractAnswerTokens(displayText);
+      for (const q of quotes.values()) tokens.push(q);
+      asstEl.dataset.tokens = JSON.stringify(tokens);
+
+      if (pdfDoc && cites.length > 0) {
+        const ok = tokens.length > 0
+          ? await highlightAnswerOnPage(cites[0].pageNumber, tokens)
+          : false;
+        if (!ok) goToPage(cites[0].pageNumber);
       }
 
       answerEl.innerHTML = escapeHtml(displayText).replace(/\[(\d+)\]/g, (_, n) => {
-        const c = cites.find((x) => String(x.marker) === Number(n));
+        const c = cites.find((x) => x.marker === Number(n));
         if (!c) return `[${n}]`;
         return `<button class="cite-chip" data-marker="${c.marker}">[${n}] p.${c.pageNumber}</button>`;
       });
@@ -1878,13 +1932,11 @@
           const c = findChunkByMarker(cites, marker);
           if (!c) return;
           if (pdfDoc) {
-            const quote = quotes.get(marker);
-            if (quote) {
-              const ok = await highlightQuote(c.pageNumber, quote);
-              if (!ok) goToPage(c.pageNumber, c);
-            } else {
-              goToPage(c.pageNumber, c);
-            }
+            const toks = JSON.parse(asstEl.dataset.tokens || '[]');
+            const ok = toks.length
+              ? await highlightAnswerOnPage(c.pageNumber, toks)
+              : false;
+            if (!ok) goToPage(c.pageNumber);
           } else {
             highlightTextSource(asstEl, c.marker);
           }
