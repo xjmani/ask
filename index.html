@@ -1569,7 +1569,17 @@
   env.localModelPath = './vendor/embeddings/';
   env.backends.onnx.wasm.wasmPaths = './vendor/';
 
-  const MODEL_ID = 'Llama-3.2-3B-Instruct-q4f16_1-MLC';
+  // Default desktop model (~2 GB) and an iOS fallback model (~700 MB) that
+  // fits inside iOS Safari's per-origin Cache Storage quota. The iOS gate
+  // can switch chosenModelId to the light one before the user proceeds.
+  const MODEL_DEFAULT = 'Llama-3.2-3B-Instruct-q4f16_1-MLC';
+  const MODEL_LIGHT   = 'Llama-3.2-1B-Instruct-q4f16_1-MLC';
+  let chosenModelId = MODEL_DEFAULT;
+  function modelLabel() {
+    return chosenModelId === MODEL_LIGHT
+      ? 'Llama 3.2 1B, on-device'
+      : 'Llama 3.2 3B, on-device';
+  }
   let llmEngine = null;
   let llmReady = null;
   function ensureLLM(onProgress) {
@@ -1577,7 +1587,7 @@
     llmReady = (async () => {
       llmEngine = new webllm.MLCEngine();
       llmEngine.setInitProgressCallback((report) => onProgress?.(report));
-      await llmEngine.reload(MODEL_ID);
+      await llmEngine.reload(chosenModelId);
       return llmEngine;
     })();
     return llmReady;
@@ -1904,14 +1914,28 @@
     $mount.innerHTML = `
       <div class="intro-card">
         <div class="intro-card__eyebrow">Device check</div>
-        <h2 class="intro-card__title">${iosKind === 'iphone' ? 'iPhone' : 'iPad'} can't fit the model.</h2>
+        <h2 class="intro-card__title">${iosKind === 'iphone' ? 'iPhone' : 'iPad'} storage is tight for the default model.</h2>
         <div class="intro-card__body">
-          <p>The tool downloads about <strong>2 GB</strong> of model weights and stores them in your browser's cache for offline reuse. iOS Safari caps per-site cache storage at a fraction of that, so the download fails partway through with a generic error.</p>
-          <p>Open <strong>ask.xjmani.com</strong> on a desktop or laptop running Safari, Chrome, or Edge. Same tool, same privacy, just enough storage for the model.</p>
+          <p>The default model needs about <strong>2 GB</strong> of browser cache. iOS Safari caps per-site cache well below that, so the full model usually fails partway through. We can try a smaller <strong>700 MB Llama 3.2 1B</strong> model instead. It might still hit storage limits, and answers are noticeably less reliable than the 3B desktop default.</p>
+          <p class="intro-card__sub">For best results, open <strong>ask.xjmani.com</strong> on a desktop or laptop instead.</p>
+        </div>
+        <div class="intro-card__actions">
+          <button class="btn-primary" id="iosLightBtn">Try the 1B model</button>
         </div>
       </div>
     `;
     gateOff();
+    document.getElementById('iosLightBtn').addEventListener('click', () => {
+      chosenModelId = MODEL_LIGHT;
+      $drop.removeAttribute('aria-disabled');
+      $drop.style.pointerEvents = '';
+      $drop.style.opacity = '';
+      $fileInput.removeAttribute('disabled');
+      $overlay.hidden = true;
+      $overlayTitle.textContent = '';
+      $resume.hidden = true;
+      unlockScroll();
+    });
   }
 
   let pdfDoc = null;
@@ -2227,12 +2251,13 @@
 
   function showModelDownloadCard() {
     return new Promise((resolve, reject) => {
+      const sizeLabel = chosenModelId === MODEL_LIGHT ? '700 MB' : '2 GB';
       $mount.innerHTML = `
         <div class="intro-card">
           <div class="intro-card__eyebrow">First-time setup</div>
           <h2 class="intro-card__title">Loading the model</h2>
           <div class="intro-card__body">
-            <p>This downloads about <strong>2 GB</strong> of model weights from Hugging Face. After that, it runs entirely on your device, even offline.</p>
+            <p>This downloads about <strong>${sizeLabel}</strong> of model weights from Hugging Face. After that, it runs entirely on your device, even offline.</p>
             <p class="intro-card__sub">The download is just the model. Your document doesn't go anywhere.</p>
           </div>
           <div class="intro-card__actions" id="modelActions">
@@ -2294,7 +2319,7 @@
   async function prepareModel() {
     if (!disclaimerAccepted()) await showDisclaimer();
     let cached = false;
-    try { cached = await webllm.hasModelInCache(MODEL_ID, webllm.prebuiltAppConfig); }
+    try { cached = await webllm.hasModelInCache(chosenModelId, webllm.prebuiltAppConfig); }
     catch { cached = false; }
     if (cached) await loadModelFromCache();
     else        await showModelDownloadCard();
@@ -2309,7 +2334,7 @@
           <form class="chat__form" id="chatForm">
             <textarea class="chat__input" id="chatInput" placeholder="Ask a question about this document..." rows="2"></textarea>
             <div class="chat__actions">
-              <span class="chat__model" title="The language model is running in your browser, on your device.">Llama 3.2 3B, on-device</span>
+              <span class="chat__model" title="The language model is running in your browser, on your device.">${modelLabel()}</span>
               ${hasPdf ? `<button type="button" class="chat__pdf-toggle" id="pdfToggle" aria-label="Show PDF">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
