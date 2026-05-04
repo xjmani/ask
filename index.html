@@ -982,10 +982,10 @@
   }
   .cite-row {
     display: flex;
-    align-items: baseline;
+    align-items: flex-start;
     gap: .6rem;
     width: 100%;
-    padding: .5rem .75rem;
+    padding: .65rem .8rem;
     background: transparent;
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -1006,28 +1006,22 @@
     color: var(--accent);
     flex-shrink: 0;
     letter-spacing: .02em;
+    line-height: 1.55;
   }
   .cite-row__page {
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--text-mute);
     flex-shrink: 0;
+    line-height: 1.55;
   }
   .cite-row__preview {
     font-size: var(--size-small);
     flex: 1 1 0;
     min-width: 0;
-    line-height: 1.45;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .cite-row.is-expanded {
-    align-items: flex-start;
-  }
-  .cite-row.is-expanded .cite-row__preview {
+    line-height: 1.55;
     white-space: pre-wrap;
-    overflow: visible;
+    word-break: break-word;
   }
 
   .cite-chip {
@@ -2013,17 +2007,12 @@
     };
   }
 
-  // Compact preview of a chunk's text for the citation row. Truncates at the
-  // last word boundary inside max chars to avoid mid-word cuts.
-  function makePreview(text, max = 120) {
+  // Full normalized preview of a chunk for the citation row. Whitespace
+  // collapsed to single spaces so weird PDF text-extraction artifacts (mid-
+  // line breaks, double spaces) don't make the preview hard to read.
+  function makePreview(text) {
     if (!text) return '';
-    let t = text.replace(/\s+/g, ' ').trim();
-    if (t.length === 0) return '';
-    if (t.length <= max) return t;
-    let cut = t.slice(0, max);
-    const lastSpace = cut.lastIndexOf(' ');
-    if (lastSpace > max * 0.6) cut = cut.slice(0, lastSpace);
-    return cut + '…';
+    return text.replace(/\s+/g, ' ').trim();
   }
 
   function renderCiteRows(asstEl, cites) {
@@ -2468,15 +2457,9 @@ Answer: The phone number is +1 555-123-4567 [1].`;
       list?.querySelectorAll('.cite-row').forEach((row) => {
         row.addEventListener('click', () => {
           const c = findChunkByMarker(cites, Number(row.dataset.marker));
-          if (!c) return;
-          if (pdfDoc) {
-            togglePdfView(true);
-            goToPage(c.pageNumber);
-          } else {
-            const preview = row.querySelector('.cite-row__preview');
-            const expanded = row.classList.toggle('is-expanded');
-            preview.textContent = expanded ? c.text : makePreview(c.text);
-          }
+          if (!c || !pdfDoc) return;
+          togglePdfView(true);
+          goToPage(c.pageNumber);
         });
       });
 
