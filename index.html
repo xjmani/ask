@@ -699,6 +699,7 @@
   .ask-grid { display: grid; grid-template-columns: 1fr; gap: 1.25rem; }
   @media (min-width: 960px) {
     .ask-grid { grid-template-columns: 1fr 1fr; align-items: start; }
+    .ask-grid--single { grid-template-columns: 1fr; max-width: 760px; margin: 0 auto; }
     .pdf-pane { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow: auto; }
   }
   .pdf-pane {
@@ -744,6 +745,23 @@
     border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
   }
   .chat__msg--assistant { white-space: pre-wrap; }
+  .chat__thinking {
+    display: inline-flex; gap: .35rem; align-items: center;
+    padding: .25rem 0;
+  }
+  .chat__dot {
+    display: inline-block;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent);
+    opacity: .35;
+    animation: chat-dot 1.2s infinite ease-in-out;
+  }
+  .chat__dot:nth-child(2) { animation-delay: .15s; }
+  .chat__dot:nth-child(3) { animation-delay: .3s; }
+  @keyframes chat-dot {
+    0%, 80%, 100% { opacity: .25; transform: scale(.8); }
+    40%           { opacity: 1;   transform: scale(1); }
+  }
   .chat__form { display: flex; flex-direction: column; gap: .5rem; }
   .chat__input {
     width: 100%;
@@ -1332,8 +1350,9 @@
   }
 
   function renderChat() {
+    const hasPdf = !!pdfDoc;
     $mount.innerHTML = `
-      <div class="ask-grid">
+      <div class="ask-grid${hasPdf ? '' : ' ask-grid--single'}">
         <div class="chat">
           <div class="chat__messages" id="chatMessages"></div>
           <form class="chat__form" id="chatForm">
@@ -1344,9 +1363,7 @@
             </div>
           </form>
         </div>
-        <div class="pdf-pane">
-          <canvas id="pdfCanvas"></canvas>
-        </div>
+        ${hasPdf ? `<div class="pdf-pane"><canvas id="pdfCanvas"></canvas></div>` : ''}
       </div>
     `;
     document.getElementById('chatForm').addEventListener('submit', onAsk);
@@ -1359,7 +1376,7 @@
     document.getElementById('chatStop').addEventListener('click', () => {
       if (llmEngine) llmEngine.interruptGenerate();
     });
-    renderPage(1);
+    if (hasPdf) renderPage(1);
   }
 
   async function onAsk(e) {
@@ -1378,12 +1395,16 @@
 
     const asstEl = document.createElement('div');
     asstEl.className = 'chat__msg chat__msg--assistant';
-    asstEl.textContent = '';
+    asstEl.innerHTML = `<span class="chat__thinking"><span class="chat__dot"></span><span class="chat__dot"></span><span class="chat__dot"></span></span>`;
     messages.appendChild(asstEl);
+    asstEl.scrollIntoView({ behavior: 'smooth', block: 'end' });
 
     stop.hidden = false;
+    let firstToken = true;
     try {
+      asstEl.dataset.phase = 'retrieving';
       const top = await retrieve(question, 4);
+      asstEl.dataset.phase = 'thinking';
       const contextBlock = top
         .map((r, i) => `[${i + 1}] (page ${r.chunk.pageNumber}) ${r.chunk.text}`)
         .join('\n\n');
@@ -1405,6 +1426,10 @@
       });
       for await (const chunk of stream) {
         const delta = chunk.choices?.[0]?.delta?.content || '';
+        if (firstToken && delta) {
+          asstEl.textContent = '';
+          firstToken = false;
+        }
         asstEl.textContent += delta;
       }
       const cites = JSON.parse(asstEl.dataset.citations || '[]');
