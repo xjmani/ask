@@ -1064,6 +1064,9 @@
     border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
   }
   .chat__msg--assistant { white-space: pre-wrap; }
+  .chat__recovery { display: flex; flex-direction: column; gap: .75rem; }
+  .chat__recovery p { margin: 0; color: var(--text-dim); line-height: 1.55; }
+  .chat__recovery button { align-self: flex-start; }
   /* Pending state: assistant message is showing the thinking indicator
      before the first token arrives. Strip bubble chrome so the indicator
      reads as inline text in the message flow. */
@@ -2579,7 +2582,22 @@ Answer: The phone number is +1 555-123-4567 [1].`;
       });
     } catch (err) {
       stopThinking();
-      answerEl.textContent = `Error: ${err.message}`;
+      const raw = String(err && err.message || err);
+      const isGpuGone = /has already been disposed|device.*lost|context.*lost|compatible GPU|exit\(1\)/i.test(raw);
+      if (isGpuGone) {
+        answerEl.innerHTML = '';
+        const recovery = document.createElement('div');
+        recovery.className = 'chat__recovery';
+        recovery.innerHTML = `
+          <p>Your mobile browser released the GPU. This is normal on phones after a few questions; the OS reclaims memory aggressively.</p>
+          <p>Reload the page and your chat continues from where you left off. The model is cached, so reload only takes a few seconds.</p>
+          <button type="button" class="btn-primary" id="reloadAfterGpu">Reload to continue</button>
+        `;
+        answerEl.appendChild(recovery);
+        recovery.querySelector('#reloadAfterGpu').addEventListener('click', () => location.reload());
+      } else {
+        answerEl.textContent = `Error: ${raw}`;
+      }
     } finally {
       stopThinking();
       stop.hidden = true;
