@@ -1586,10 +1586,21 @@
   }
   let llmEngine = null;
   let llmReady = null;
+  let llmWorker = null;
+
+  // The engine runs in a Web Worker so the WebGPU context is isolated from
+  // the main thread. When the engine dies, terminating + respawning the
+  // worker gives a fresh WebGPU context without a full page reload, which
+  // helps recovery on mobile browsers that aggressively reclaim resources.
   function ensureLLM(onProgress) {
     if (llmReady) return llmReady;
     llmReady = (async () => {
-      llmEngine = new webllm.MLCEngine();
+      if (llmWorker) {
+        try { llmWorker.terminate(); } catch {}
+        llmWorker = null;
+      }
+      llmWorker = new Worker('./ask-worker.js', { type: 'module' });
+      llmEngine = new webllm.WebWorkerMLCEngine(llmWorker);
       llmEngine.setInitProgressCallback((report) => onProgress?.(report));
       await llmEngine.reload(chosenModelId);
       return llmEngine;
