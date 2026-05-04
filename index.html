@@ -46,7 +46,7 @@
   · 'unsafe-eval'       . pdfjs uses Function() at runtime for
                           font and Type1 parsing.
 -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; worker-src 'self' blob:; img-src 'self' data: blob:; connect-src 'self' https://huggingface.co https://*.huggingface.co https://raw.githubusercontent.com; object-src 'none'; base-uri 'self'; form-action 'self';" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; worker-src 'self' blob:; img-src 'self' data: blob:; connect-src 'self' https://huggingface.co https://*.huggingface.co https://*.hf.co https://raw.githubusercontent.com; object-src 'none'; base-uri 'self'; form-action 'self';" />
 <meta name="theme-color" content="#08090a" />
 <meta name="color-scheme" content="dark light" />
 <title>Ask · xjmani</title>
@@ -1007,7 +1007,7 @@
         <article class="proof__item">
           <span class="proof__num">03</span>
           <h3 class="proof__title">CSP locks the page to your device.</h3>
-          <p class="proof__body">The page's Content Security Policy allows scripts and styles only from this origin. The only external destinations allowed are <code>huggingface.co</code> (model weights) and <code>raw.githubusercontent.com</code> (compiled WebGPU shaders), both for the one-time model download. Everything else, including any future change, would have to update the CSP and would be visible in this page's source.</p>
+          <p class="proof__body">The page's Content Security Policy allows scripts and styles only from this origin. The only external destinations allowed are Hugging Face hosts (<code>huggingface.co</code>, <code>hf.co</code>) for the model weights and <code>raw.githubusercontent.com</code> for the compiled WebGPU shaders, both for the one-time model download. Everything else, including any future change, would have to update the CSP and would be visible in this page's source.</p>
           <button class="proof__verify" type="button" data-verify="csp">Curl the headers, check connect-src &rarr;</button>
         </article>
       </div>
