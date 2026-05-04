@@ -704,15 +704,15 @@
     border: 1px solid var(--border);
     background: var(--bg-card);
     border-radius: 12px;
-    display: flex;
-    flex-direction: column;
     overflow: hidden;
+    display: grid;
+    grid-template-rows: auto 1fr;
   }
   @media (min-width: 1024px) {
     .pdf-viewer {
       position: sticky;
       top: 1rem;
-      max-height: calc(100vh - 2rem);
+      height: calc(100vh - 2rem);
     }
   }
   .pdf-viewer__head {
@@ -748,8 +748,8 @@
     overflow-y: auto;
     overflow-x: hidden;
     padding: 1rem;
-    flex: 1 1 0;
     min-height: 0;
+    min-width: 0;
     scroll-behavior: smooth;
   }
   .pdf-page {
@@ -1658,6 +1658,9 @@
     if (!wrap) return;
     wrap.innerHTML = '';
     pageMetas.clear();
+    // Wait one paint so the grid has computed clientWidth before we measure.
+    // Without this, clientWidth can be 0 immediately after innerHTML changes.
+    await new Promise((r) => requestAnimationFrame(r));
     const paneWidth = (wrap.clientWidth || 600) - 32; // minus padding
 
     for (let i = 1; i <= pdfDoc.numPages; i++) {
