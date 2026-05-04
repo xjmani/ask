@@ -1386,70 +1386,130 @@
     return scored.slice(0, k);
   }
 
-  // Build candidate spans for refinement. Tries sentence boundaries first;
-  // for invoices, tables, and other non-prose layouts that lack punctuation,
-  // falls back to OVERLAPPING word windows so semantic phrases like
-  // "First Month Free VIP Membership (100% off)" don't get cut between windows.
-  function splitSpans(text) {
-    const sentence = text.split(/(?<=[.!?])\s+|\n+/).map((s) => s.trim()).filter((s) => s.length > 5);
-    if (sentence.length >= 2) return sentence;
-    const words = text.split(/\s+/).filter((w) => w.length > 0);
-    const out = [];
-    const seen = new Set();
-    const sizes = [6, 10, 16];
-    for (const W of sizes) {
-      const stride = Math.max(1, Math.floor(W / 2));
-      for (let i = 0; i + 2 <= words.length; i += stride) {
-        const win = words.slice(i, i + W).join(' ');
-        if (win.length < 12 || seen.has(win)) continue;
-        seen.add(win);
-        out.push(win);
-        if (i + W >= words.length) break;
+  // ---- Quote-driven highlighting -------------------------------------------
+  // Find a quoted phrase inside a PDF page's text items, accounting for
+  // varied whitespace, line breaks, and column reordering. Returns the items
+  // whose characters participated in the match.
+  async function findItemsForQuote(pageNumber, quote) {
+    if (!pdfDoc || !quote) return null;
+    const page = await pdfDoc.getPage(pageNumber);
+    const tc = await page.getTextContent();
+    if (!tc.items.length) return null;
+
+    // Build flat page text + parallel char->item map. Insert single space
+    // between items (matches our chunkText join() so positions stay consistent).
+    const charToItem = [];
+    let flat = '';
+    for (let i = 0; i < tc.items.length; i++) {
+      if (flat.length) { flat += ' '; charToItem.push(-1); }
+      for (const ch of tc.items[i].str) {
+        flat += ch;
+        charToItem.push(i);
       }
     }
-    return out.length > 0 ? out : [text];
+
+    const norm = (s) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+    const target = norm(quote);
+    const flatLower = flat.toLowerCase();
+
+    // Strategy 1: direct substring match in case-insensitive flat
+    let idx = flatLower.indexOf(target);
+
+    // Strategy 2: match after collapsing whitespace in the flat
+    let collapsedToFlat = null;
+    if (idx < 0) {
+      let collapsed = '';
+      collapsedToFlat = [];
+      let prevSpace = true;
+      for (let i = 0; i < flatLower.length; i++) {
+        const ch = flatLower[i];
+        if (/\s/.test(ch)) {
+          if (!prevSpace) { collapsed += ' '; collapsedToFlat.push(i); prevSpace = true; }
+        } else {
+          collapsed += ch;
+          collapsedToFlat.push(i);
+          prevSpace = false;
+        }
+      }
+      const cIdx = collapsed.indexOf(target);
+      if (cIdx >= 0) idx = collapsedToFlat[cIdx];
+    }
+
+    // Strategy 3: prefix match, anchor on first 6 words (handles model truncation)
+    if (idx < 0) {
+      const head = target.split(' ').slice(0, 6).join(' ');
+      if (head.length >= 6) idx = flatLower.indexOf(head);
+    }
+
+    if (idx < 0) return null;
+
+    const matched = new Set();
+    const endHint = idx + target.length;
+    let consumed = 0;
+    for (let i = idx; i < flat.length && consumed < target.length + 20; i++) {
+      if (charToItem[i] >= 0) {
+        matched.add(charToItem[i]);
+        consumed++;
+      } else {
+        consumed++;
+      }
+      if (i >= endHint && /\s/.test(flat[i] || ' ')) break;
+    }
+
+    return {
+      page,
+      items: [...matched].map((i) => tc.items[i]),
+    };
   }
 
-  // Score each candidate span against the question with embedding similarity.
-  // Boost spans containing exact question keyword matches so that a span
-  // mentioning "discount" beats a span without it for the question
-  // "was a discount applied" even when other words make embeddings ambiguous.
-  function keywordBoost(question, span) {
-    const stop = new Set(['the','a','an','is','was','are','were','be','of','to','in','on','for','and','or','but','this','that','it','as','at','by']);
-    const qWords = new Set(
-      (question.toLowerCase().match(/\w{3,}/g) || []).filter((w) => !stop.has(w))
-    );
-    const sWords = new Set((span.toLowerCase().match(/\w{3,}/g) || []));
-    let hits = 0;
-    for (const w of qWords) if (sWords.has(w)) hits++;
-    return hits;
+  async function highlightQuote(pageNumber, quote) {
+    const wrap = document.getElementById('pdfCanvasWrap');
+    if (!wrap) return false;
+    const meta = pageMetas.get(pageNumber);
+    if (!meta) return false;
+    const found = await findItemsForQuote(pageNumber, quote);
+    document.querySelectorAll('.pdf-page__highlights').forEach((o) => { o.innerHTML = ''; });
+    if (!found || !found.items.length) return false;
+    const overlay = meta.wrap.querySelector('.pdf-page__highlights');
+    drawItemsHighlights(overlay, found.items, meta.viewport);
+    meta.wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return true;
   }
 
-  async function refineToBestSpan(question, chunk) {
-    const spans = splitSpans(chunk.text);
-    if (spans.length <= 1) return chunk;
-    const embed = await getEmbedder();
-    const qVec = await embed(question, { pooling: 'mean', normalize: true });
-    let best = chunk;
-    let bestScore = -Infinity;
-    for (const s of spans) {
-      const idx = chunk.text.indexOf(s);
-      if (idx < 0) continue;
-      const sVec = await embed(s, { pooling: 'mean', normalize: true });
-      const sim = cosine(qVec.data, sVec.data);
-      const boost = keywordBoost(question, s) * 0.05;
-      const score = sim + boost;
-      if (score > bestScore) {
-        bestScore = score;
-        best = {
-          ...chunk,
-          text: s,
-          start: chunk.start + idx,
-          end:   chunk.start + idx + s.length,
-        };
+  function drawItemsHighlights(layer, items, viewport) {
+    const cw = viewport.width;
+    const ch = viewport.height;
+    for (const item of items) {
+      const tx = pdfjs.Util.transform(viewport.transform, item.transform);
+      const fontHeight = Math.hypot(tx[2], tx[3]) || (item.height * viewport.scale);
+      const x = tx[4];
+      const y = tx[5] - fontHeight;
+      const w = (item.width || 0) * viewport.scale;
+      const div = document.createElement('div');
+      div.className = 'pdf-highlight';
+      div.style.left   = `${(x / cw) * 100}%`;
+      div.style.top    = `${(y / ch) * 100}%`;
+      div.style.width  = `${(w / cw) * 100}%`;
+      div.style.height = `${(fontHeight / ch) * 100}%`;
+      layer.appendChild(div);
+    }
+  }
+
+  // Parse `[N]: "verbatim quote"` lines emitted by the model.
+  // Returns: { prose: string, quotes: Map<marker, text> }
+  function parseQuotes(answer) {
+    const quotes = new Map();
+    const lines = answer.split('\n');
+    const proseLines = [];
+    for (const line of lines) {
+      const m = line.match(/^\s*\[(\d+)\]\s*[:\-]\s*["“](.+?)["”]\s*$/);
+      if (m) {
+        quotes.set(Number(m[1]), m[2].trim());
+      } else {
+        proseLines.push(line);
       }
     }
-    return best;
+    return { prose: proseLines.join('\n').trim(), quotes };
   }
 
   // ---- theme toggle ---------------------------------------------------------
@@ -1744,27 +1804,30 @@
       const contextBlock = top
         .map((r, i) => `[${i + 1}] (page ${r.chunk.pageNumber}) ${r.chunk.text}`)
         .join('\n\n');
-      const systemPrompt = `You are a careful reading assistant. Answer the user's question using ONLY the numbered context excerpts below. When you use information from a context excerpt, cite it inline as [1], [2], etc. If the context does not contain the answer, say so plainly. Do not invent facts.`;
+      const systemPrompt = [
+        'You are a careful reading assistant. Answer the user\'s question using ONLY the numbered context excerpts below.',
+        'When you use information from a context excerpt, cite it inline as [1], [2], etc.',
+        'After your answer, on new lines, output the SHORTEST verbatim phrase from the matching context that supports each citation, formatted exactly as:',
+        '[1]: "exact verbatim phrase from context"',
+        '[2]: "exact verbatim phrase from context"',
+        'The quoted phrase must appear word-for-word in the source. Do not paraphrase. Keep each quote under 20 words.',
+        'If the context does not contain the answer, say so plainly and skip the quote section.',
+      ].join('\n');
       const userMsg = `Context:\n\n${contextBlock}\n\nQuestion: ${question}`;
 
-      // Refine each retrieved chunk down to its best-matching sentence span
-      // so the highlight points at the specific phrase that answers the question,
-      // not the whole paragraph or page.
-      const refined = [];
-      for (const r of top) {
-        refined.push(await refineToBestSpan(question, r.chunk));
-      }
-      const cites = refined.map((c, i) => ({
+      const cites = top.map((r, i) => ({
         marker: i + 1,
-        pageNumber: c.pageNumber,
-        text: c.text,
-        start: c.start,
-        end: c.end,
+        pageNumber: r.chunk.pageNumber,
+        text: r.chunk.text,
+        start: r.chunk.start,
+        end: r.chunk.end,
       }));
 
-      // Auto-navigate the viewer to the top retrieved span before generation starts.
+      // Pre-navigate to the top retrieved page while the model thinks.
+      // Highlight gets refined once the model emits its verbatim quote.
       if (pdfDoc && cites.length > 0) {
-        goToPage(cites[0].pageNumber, cites[0]);
+        const meta = pageMetas.get(cites[0].pageNumber);
+        if (meta) meta.wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
 
       const stream = await llmEngine.chat.completions.create({
@@ -1783,18 +1846,43 @@
         answerEl.textContent += delta;
       }
       const rawText = answerEl.textContent;
-      answerEl.innerHTML = escapeHtml(rawText).replace(/\[(\d+)\]/g, (_, n) => {
-        const c = cites.find((x) => String(x.marker) === n);
+      const { prose, quotes } = parseQuotes(rawText);
+      const displayText = prose || rawText;
+
+      // Auto-highlight using the model's quote for the top citation, if any.
+      if (pdfDoc && quotes.size > 0) {
+        const firstMarker = [...quotes.keys()].sort((a, b) => a - b)[0];
+        const firstCite = findChunkByMarker(cites, firstMarker);
+        if (firstCite) {
+          const ok = await highlightQuote(firstCite.pageNumber, quotes.get(firstMarker));
+          if (!ok) goToPage(firstCite.pageNumber, firstCite); // fallback
+        }
+      } else if (pdfDoc && cites.length > 0) {
+        goToPage(cites[0].pageNumber, cites[0]);
+      }
+
+      answerEl.innerHTML = escapeHtml(displayText).replace(/\[(\d+)\]/g, (_, n) => {
+        const c = cites.find((x) => String(x.marker) === Number(n));
         if (!c) return `[${n}]`;
         return `<button class="cite-chip" data-marker="${c.marker}">[${n}] p.${c.pageNumber}</button>`;
       });
       if (!pdfDoc) renderTextSources(asstEl, cites);
       answerEl.querySelectorAll('.cite-chip').forEach((b) => {
-        b.addEventListener('click', () => {
-          const c = findChunkByMarker(cites, b.dataset.marker);
+        b.addEventListener('click', async () => {
+          const marker = Number(b.dataset.marker);
+          const c = findChunkByMarker(cites, marker);
           if (!c) return;
-          if (pdfDoc) goToPage(c.pageNumber, c);
-          else        highlightTextSource(asstEl, c.marker);
+          if (pdfDoc) {
+            const quote = quotes.get(marker);
+            if (quote) {
+              const ok = await highlightQuote(c.pageNumber, quote);
+              if (!ok) goToPage(c.pageNumber, c);
+            } else {
+              goToPage(c.pageNumber, c);
+            }
+          } else {
+            highlightTextSource(asstEl, c.marker);
+          }
         });
       });
     } catch (err) {
