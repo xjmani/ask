@@ -2041,15 +2041,50 @@
     try { return localStorage.getItem(DISCLAIMER_KEY) === '1'; }
     catch { return false; }
   }
-  // Render a clean progress label from WebLLM's report. The native `report.text`
-  // string is verbose and contains stale "0 secs elapsed" counters during the
-  // OPFS cache phase, so we ignore it and synthesize our own copy from the
-  // `progress` float (0 to 1).
+  // Derive a 0..1 progress value from WebLLM's report. The `progress` float
+  // stays at 0 during the OPFS cache phase, so as a fallback we parse the
+  // "[N/M]" chunk counter that WebLLM embeds in `report.text` and use that.
+  function progressFromReport(report) {
+    let p = report && typeof report.progress === 'number' ? report.progress : 0;
+    if (p === 0 && report && typeof report.text === 'string') {
+      const m = report.text.match(/\[(\d+)\s*\/\s*(\d+)\]/);
+      if (m) {
+        const n = Number(m[1]);
+        const d = Number(m[2]);
+        if (d > 0) p = n / d;
+      }
+    }
+    return Math.max(0, Math.min(1, p));
+  }
+
   function progressLabel(report, idleText = 'Initializing.') {
-    const pct = Math.round((report.progress || 0) * 100);
+    const p = progressFromReport(report);
+    const pct = Math.round(p * 100);
     if (pct >= 100) return 'Ready.';
     if (pct <= 0)   return idleText;
     return `${pct}%`;
+  }
+
+  // Render a polished "preparing" card with optional progress bar.
+  // Used during PDF read + chunk embedding so the loading states feel
+  // consistent with the disclaimer and model-load cards that come next.
+  function renderPrepCard({ eyebrow = 'Preparing', title, subtitle, percent = null }) {
+    const safeTitle = escapeHtml(title || '');
+    const safeSub = subtitle ? `<div class="intro-card__body"><p>${escapeHtml(subtitle)}</p></div>` : '';
+    const bar = percent === null ? '' : `
+      <div class="progress">
+        <div class="progress__bar"><div class="progress__bar-fill" style="width:${percent}%"></div></div>
+        <span class="progress__text">${percent >= 100 ? 'Done.' : (percent > 0 ? percent + '%' : 'Starting.')}</span>
+      </div>
+    `;
+    $mount.innerHTML = `
+      <div class="intro-card">
+        <div class="intro-card__eyebrow">${escapeHtml(eyebrow)}</div>
+        <h2 class="intro-card__title">${safeTitle}</h2>
+        ${safeSub}
+        ${bar}
+      </div>
+    `;
   }
 
   function showDisclaimer() {
@@ -2104,7 +2139,7 @@
         prog.hidden = false;
         try {
           await ensureLLM((report) => {
-            const pct = Math.round((report.progress || 0) * 100);
+            const pct = Math.round(progressFromReport(report) * 100);
             fill.style.width = `${pct}%`;
             txt.textContent = progressLabel(report, 'Connecting to Hugging Face.');
           });
@@ -2127,14 +2162,14 @@
         </div>
         <div class="progress">
           <div class="progress__bar"><div class="progress__bar-fill" style="width:0%"></div></div>
-          <span class="progress__text">0%</span>
+          <span class="progress__text">Reading cache.</span>
         </div>
       </div>
     `;
     const fill = $mount.querySelector('.progress__bar-fill');
     const txt  = $mount.querySelector('.progress__text');
     await ensureLLM((report) => {
-      const pct = Math.round((report.progress || 0) * 100);
+      const pct = Math.round(progressFromReport(report) * 100);
       fill.style.width = `${pct}%`;
       txt.textContent = progressLabel(report, 'Reading cache.');
     });
@@ -2314,19 +2349,35 @@ Answer: The phone number is +1 555-123-4567 [1].`;
   async function handleFile(file) {
     if (!file || file.type !== 'application/pdf') return;
     openOverlay(file.name);
-    $mount.innerHTML = `<div class="ask-status">Reading ${file.name}...</div>`;
+    renderPrepCard({
+      title: `Reading ${file.name}`,
+      subtitle: 'Extracting text from each page in your browser.',
+    });
     try {
       const { numPages, pages } = await extractText(file);
       const chunks = chunkText(pages);
-      setStatus(`Read ${numPages} pages, ${chunks.length} chunks. Loading embedder...`);
+      renderPrepCard({
+        title: `Indexing ${file.name}`,
+        subtitle: `${chunks.length} chunks across ${numPages} ${numPages === 1 ? 'page' : 'pages'}.`,
+        percent: 0,
+      });
       const embedded = await embedChunks(chunks, (done, total) => {
-        setStatus(`Embedding ${done} of ${total}...`);
+        const pct = Math.round((done / total) * 100);
+        renderPrepCard({
+          title: `Indexing ${file.name}`,
+          subtitle: `${done} of ${total} chunks embedded.`,
+          percent: pct,
+        });
       });
       window.__askDoc = { file, pages, chunks: embedded };
       await prepareModel();
       renderChat();
     } catch (err) {
-      $mount.textContent = `Could not read this PDF. ${err.message}`;
+      renderPrepCard({
+        eyebrow: 'Error',
+        title: 'Could not read this PDF.',
+        subtitle: err.message,
+      });
       console.error(err);
     }
   }
