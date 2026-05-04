@@ -2481,13 +2481,33 @@ Answer: The phone number is +1 555-123-4567 [1].`;
         if (meta) meta.wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
 
-      const stream = await llmEngine.chat.completions.create({
-        stream: true,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user',   content: userMsg },
-        ],
-      });
+      // Mobile browsers reclaim WebGPU resources aggressively (especially
+      // after backgrounding); the engine's underlying TVM module gets
+      // disposed and our cached reference is stale. Detect that, throw the
+      // dead engine away, reload silently, and retry once before failing.
+      let stream;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          stream = await llmEngine.chat.completions.create({
+            stream: true,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user',   content: userMsg },
+            ],
+          });
+          break;
+        } catch (err) {
+          const msg = String(err && err.message || err);
+          const isDisposed = /has already been disposed|device.*lost|context.*lost/i.test(msg);
+          if (isDisposed && attempt === 0) {
+            llmEngine = null;
+            llmReady = null;
+            await ensureLLM(() => {});
+            continue;
+          }
+          throw err;
+        }
+      }
       for await (const chunk of stream) {
         const delta = chunk.choices?.[0]?.delta?.content || '';
         if (firstToken && delta) {
