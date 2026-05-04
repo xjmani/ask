@@ -722,23 +722,42 @@
     bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
     right: 1.5rem;
     z-index: 90;
-    padding: .65rem 1.1rem;
-    background: var(--accent);
-    color: #0e0c1f;
-    border: none;
+    padding: .5rem .95rem .5rem .55rem;
+    background: color-mix(in srgb, var(--bg-card) 88%, transparent);
+    backdrop-filter: blur(14px) saturate(160%);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    color: var(--text);
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
     border-radius: 999px;
-    font-family: var(--font-mono);
+    font-family: var(--font-body);
     font-size: var(--size-small);
-    font-weight: 600;
+    font-weight: 500;
     cursor: pointer;
-    box-shadow: 0 6px 18px var(--accent-dim), 0 1px 0 rgba(0,0,0,.05);
+    box-shadow: 0 10px 30px rgba(0,0,0,.32), 0 0 0 1px color-mix(in srgb, var(--accent) 14%, transparent);
     display: inline-flex;
     align-items: center;
-    gap: .5rem;
-    transition: transform .2s var(--ease);
+    gap: .55rem;
+    transition: transform .2s var(--ease), box-shadow .2s var(--ease), border-color .2s var(--ease);
   }
-  .ask-resume:hover { transform: translateY(-1px); }
+  .ask-resume:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+    box-shadow: 0 14px 36px rgba(0,0,0,.4), 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+  .ask-resume:active { transform: translateY(0); }
   .ask-resume[hidden] { display: none; }
+  .ask-resume__icon {
+    width: 22px; height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--accent);
+    color: #0e0c1f;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .ask-resume__icon svg { width: 11px; height: 11px; }
+  .ask-resume__label { letter-spacing: .005em; }
 
   .ask-grid { display: grid; grid-template-columns: 1fr; gap: 1.25rem; height: 100%; min-height: 0; }
   .ask-grid--single .chat { max-width: 760px; margin: 0 auto; }
@@ -751,38 +770,8 @@
     background: var(--bg-card);
     border-radius: 12px;
     overflow: hidden;
-    display: grid;
-    grid-template-rows: auto 1fr;
     height: 100%;
     min-height: 0;
-  }
-  .pdf-viewer__head {
-    display: flex; align-items: center; gap: .75rem;
-    padding: .55rem .85rem;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-raised);
-  }
-  .pdf-viewer__info {
-    flex: 1;
-    text-align: center;
-    font-family: var(--font-mono);
-    font-size: var(--size-mono);
-    color: var(--text-dim);
-  }
-  .pdf-viewer__head button {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--text);
-    width: 32px; height: 32px;
-    border-radius: 6px;
-    font-family: var(--font-mono);
-    font-size: 14px;
-    cursor: pointer;
-    display: inline-flex; align-items: center; justify-content: center;
-  }
-  .pdf-viewer__head button:hover {
-    border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
-    color: var(--accent);
   }
   .pdf-viewer__canvas-wrap {
     position: relative;
@@ -1307,10 +1296,12 @@
 </aside>
 
 <button class="ask-resume" id="askResume" type="button" hidden>
-  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    <path d="M5 9l7 7 7-7"/>
-  </svg>
-  <span id="askResumeLabel">Return to chat</span>
+  <span class="ask-resume__icon" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6 15l6-6 6 6"/>
+    </svg>
+  </span>
+  <span class="ask-resume__label" id="askResumeLabel">Return to chat</span>
 </button>
 
 <script type="module">
@@ -1590,25 +1581,32 @@
   const $resumeLabel  = document.getElementById('askResumeLabel');
   const $mount     = document.getElementById('ask-app');
 
+  function lockScroll() {
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+  }
+  function unlockScroll() {
+    document.documentElement.style.overflow = '';
+    document.body.style.overflow = '';
+  }
   function openOverlay(title) {
     if (title) $overlayTitle.textContent = title;
     $overlay.hidden = false;
     $resume.hidden = true;
-    document.body.style.overflow = 'hidden';
+    lockScroll();
   }
   function minimizeOverlay() {
     $overlay.hidden = true;
     if ($overlayTitle.textContent) {
-      $resumeLabel.textContent = `Return to chat`;
       $resume.hidden = false;
     }
-    document.body.style.overflow = '';
+    unlockScroll();
   }
   $overlayMin.addEventListener('click', minimizeOverlay);
   $resume.addEventListener('click', () => {
     $overlay.hidden = false;
     $resume.hidden = true;
-    document.body.style.overflow = 'hidden';
+    lockScroll();
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !$overlay.hidden) minimizeOverlay();
@@ -1713,7 +1711,7 @@
 
       const label = document.createElement('span');
       label.className = 'pdf-page__label';
-      label.textContent = `p.${i}`;
+      label.textContent = `p.${i}/${pdfDoc.numPages}`;
 
       pageWrap.appendChild(canvas);
       pageWrap.appendChild(label);
@@ -1827,9 +1825,6 @@
         </div>
         ${hasPdf ? `
           <aside class="pdf-viewer">
-            <div class="pdf-viewer__head">
-              <span class="pdf-viewer__info">PDF, ${pdfDoc.numPages} ${pdfDoc.numPages === 1 ? 'page' : 'pages'}, scroll to read</span>
-            </div>
             <div class="pdf-viewer__canvas-wrap" id="pdfCanvasWrap"></div>
           </aside>
         ` : ''}
