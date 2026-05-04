@@ -989,21 +989,21 @@
       <div class="proof">
         <article class="proof__item">
           <span class="proof__num">01</span>
-          <h3 class="proof__title">No uploads</h3>
-          <p class="proof__body">Parsing and content-stream rewriting both run in your browser, using pdfjs-dist and pdf-lib. Bytes never leave this device.</p>
-          <button class="proof__verify" type="button" data-verify="network">F12 &rarr; Network &rarr; redact &rarr;</button>
+          <h3 class="proof__title">The model downloads once, then runs offline.</h3>
+          <p class="proof__body">First time you load the tool, your browser downloads the Llama 3.2 3B model from Hugging Face. After that, the weights live in your browser cache. Disconnect from the internet and the tool still works.</p>
+          <button class="proof__verify" type="button" data-verify="offline">After it loads, go offline and try it &rarr;</button>
         </article>
         <article class="proof__item">
           <span class="proof__num">02</span>
-          <h3 class="proof__title">Real redaction, not a sticker</h3>
-          <p class="proof__body">A black box on top leaves selectable text underneath. We strip the targeted glyphs from the content stream, then paint the box on for visual confirmation.</p>
-          <button class="proof__verify" type="button" data-verify="redaction">Open the export, search for it &rarr;</button>
+          <h3 class="proof__title">Your document never goes to a server.</h3>
+          <p class="proof__body">PDFs are read with <code>pdfjs-dist</code> in the page. Embeddings are computed locally with <code>all-MiniLM-L6-v2</code> via transformers.js. Inference runs in your GPU through WebLLM. Open DevTools, Network tab. After the model loads, it stays at zero.</p>
+          <button class="proof__verify" type="button" data-verify="network">F12 &rarr; Network &rarr; ask &rarr;</button>
         </article>
         <article class="proof__item">
           <span class="proof__num">03</span>
-          <h3 class="proof__title">No tracking</h3>
-          <p class="proof__body">No analytics, cookies, or fingerprinting. Custom regex patterns live in localStorage on this device. The opened PDF lives in JS memory until you close the tab.</p>
-          <button class="proof__verify" type="button" data-verify="storage">F12 &rarr; Application &rarr; Storage &rarr;</button>
+          <h3 class="proof__title">CSP locks the page to your device.</h3>
+          <p class="proof__body">The page's Content Security Policy allows scripts and styles only from this origin. The single allowed external destination is <code>huggingface.co</code> for the one-time model download. Everything else, including any future change, would have to update the CSP and would be visible in this page's source.</p>
+          <button class="proof__verify" type="button" data-verify="csp">Curl the headers, check connect-src &rarr;</button>
         </article>
       </div>
     </div>
@@ -1027,8 +1027,8 @@
             <span class="home__label">single file</span>
           </div>
           <h3 class="home__title">Standalone HTML</h3>
-          <p class="home__desc"><code style="font-family:var(--font-mono);font-size:.92em;color:var(--text)">index.html</code> plus pdfjs and pdf-lib in <code style="font-family:var(--font-mono);font-size:.92em;color:var(--text)">vendor/</code>. Double-click to redact PDFs with no network at all.</p>
-          <a class="home__cta" href="https://github.com/xjmani/pdf-redactor/archive/refs/heads/main.zip" id="downloadHtml">Download (.zip) &rarr;</a>
+          <p class="home__desc">One <code>index.html</code> plus the vendored libraries (pdfjs, transformers.js, MiniLM, WebLLM). The model itself still downloads on first use unless you save it from your browser cache.</p>
+          <a class="home__cta" href="https://github.com/xjmani/ask/archive/refs/heads/main.zip" id="downloadHtml">Download the source &rarr;</a>
         </article>
 
         <article class="home__card">
@@ -1038,9 +1038,9 @@
             </div>
             <span class="home__label">self-host</span>
           </div>
-          <h3 class="home__title">Run it on your network</h3>
-          <p class="home__desc">Serve <code style="font-family:var(--font-mono);font-size:.92em;color:var(--text)">index.html</code> from your NAS, SharePoint, internal wiki, or any static host. Bytes never leave your network.</p>
-          <a class="home__cta" href="https://github.com/xjmani/pdf-redactor#self-host">Self-host guide &rarr;</a>
+          <h3 class="home__title">Self-host on your own domain</h3>
+          <p class="home__desc">Drop the directory on any static host. The README has the nginx CSP block and the Dockerfile to run it on Cloud Run, Fly, or your own box.</p>
+          <a class="home__cta" href="https://github.com/xjmani/ask#self-host">Read the self-host guide &rarr;</a>
         </article>
 
         <article class="home__card">
@@ -1050,9 +1050,9 @@
             </div>
             <span class="home__label">open source</span>
           </div>
-          <h3 class="home__title">View source</h3>
-          <p class="home__desc">MIT-licensed source on GitHub. Audit the logic, fork the regex pack, extend with your own patterns.</p>
-          <a class="home__cta" href="https://github.com/xjmani/pdf-redactor">github.com/xjmani/pdf-redactor &rarr;</a>
+          <h3 class="home__title">View source on GitHub</h3>
+          <p class="home__desc">MIT licensed. Check the CSP, the prompt template, the embedding pipeline. Submit issues for documents we read poorly.</p>
+          <a class="home__cta" href="https://github.com/xjmani/ask">github.com/xjmani/ask &rarr;</a>
         </article>
       </div>
     </div>
@@ -1066,7 +1066,7 @@
     <span class="ftr__sep">·</span>
     <span>&copy; 2026 Loyaltydraw.com Inc</span>
     <span class="ftr__spacer" aria-hidden="true"></span>
-    <a href="https://github.com/xjmani/pdf-redactor" id="ghLink">GitHub</a>
+    <a href="https://github.com/xjmani/ask" id="ghLink">GitHub</a>
     <a href="https://xjmani.com/legal/privacy">Privacy</a>
     <a href="https://xjmani.com/contact">Contact</a>
   </div>
@@ -1521,8 +1521,9 @@
   document.querySelectorAll('[data-verify]').forEach(btn => {
     btn.addEventListener('click', () => {
       const map = {
-        network:   'F12, Network tab, drop a PDF. Nothing fires after page load.',
-        storage:   'F12, Application, Storage. Only custom patterns are stored, on this device only.',
+        offline: 'Open DevTools, Application, Service Workers, check Offline. Then ask another question.',
+        network: 'Open DevTools, Network. Filter by Other. Stays empty after the model loads.',
+        csp:     'Run: curl -sI https://ask.xjmani.com/ | grep -i content-security-policy',
       };
       toast(map[btn.dataset.verify] || 'Open devtools to verify.');
     });
