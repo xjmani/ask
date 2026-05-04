@@ -1091,12 +1091,30 @@
   .thinking__word {
     font-family: var(--font-mono);
     font-size: var(--size-mono);
-    color: var(--text-dim);
     letter-spacing: .02em;
     white-space: nowrap;
-    transition: opacity .25s var(--ease);
+    background: linear-gradient(
+      90deg,
+      var(--accent) 0%,
+      var(--accent) 40%,
+      color-mix(in srgb, #ffffff 75%, var(--accent) 25%) 50%,
+      var(--accent) 60%,
+      var(--accent) 100%
+    );
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    animation: thinking-shine 2.4s linear infinite;
   }
-  .thinking__word.is-fading { opacity: 0; }
+  @keyframes thinking-shine {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .thinking__word { animation: none; color: var(--accent); -webkit-text-fill-color: var(--accent); }
+  }
   .chat__form { display: flex; flex-direction: column; gap: .5rem; }
   .chat__input {
     width: 100%;
@@ -1834,7 +1852,7 @@
     return a;
   }
 
-  function thinkingMarkup(initialWord) {
+  function thinkingMarkup(word) {
     return `
       <span class="thinking" role="status" aria-live="polite">
         <span class="thinking__tile" data-thinking-tile>
@@ -1843,15 +1861,14 @@
           <span class="flap-anim flap-anim--top" data-flap="flip-top"><span class="flap-letter" data-letter>a</span></span>
           <span class="flap-anim flap-anim--bottom" data-flap="flip-bottom"><span class="flap-letter" data-letter>a</span></span>
         </span>
-        <span class="thinking__word" data-thinking-word>${escapeHtml(initialWord)}</span>
+        <span class="thinking__word">${escapeHtml(word)}...</span>
       </span>
     `;
   }
 
   function startThinking(rootEl) {
     const tile = rootEl.querySelector('[data-thinking-tile]');
-    const word = rootEl.querySelector('[data-thinking-word]');
-    if (!tile || !word) return () => {};
+    if (!tile) return () => {};
 
     const staticTop    = tile.querySelector('[data-flap="static-top"] [data-letter]');
     const staticBottom = tile.querySelector('[data-flap="static-bottom"] [data-letter]');
@@ -1892,21 +1909,6 @@
       later(tileStep, 520);
     }
     tileStep();
-
-    const queue = shuffle(THINKING_WORDS);
-    let qi = 0;
-    function wordStep() {
-      if (cancelled) return;
-      qi = (qi + 1) % queue.length;
-      word.classList.add('is-fading');
-      later(() => {
-        if (cancelled) return;
-        word.textContent = queue[qi];
-        word.classList.remove('is-fading');
-        later(wordStep, 3200);
-      }, 280);
-    }
-    later(wordStep, 3200);
 
     return () => {
       cancelled = true;
