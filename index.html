@@ -662,6 +662,17 @@
     letter-spacing: -.01em;
     margin: 0 0 1rem;
     color: var(--text);
+    display: flex;
+    gap: .4ch;
+    min-width: 0;
+  }
+  .intro-card__title-verb { flex-shrink: 0; }
+  .intro-card__title-file {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .intro-card__body p {
     color: var(--text-dim);
@@ -2097,8 +2108,10 @@
   // Render a polished "preparing" card with optional progress bar.
   // Used during PDF read + chunk embedding so the loading states feel
   // consistent with the disclaimer and model-load cards that come next.
-  function renderPrepCard({ eyebrow = 'Preparing', title, subtitle, percent = null }) {
-    const safeTitle = escapeHtml(title || '');
+  function renderPrepCard({ eyebrow = 'Preparing', verb, filename, subtitle, percent = null }) {
+    const titleHtml = filename
+      ? `<span class="intro-card__title-verb">${escapeHtml(verb)}</span><span class="intro-card__title-file">${escapeHtml(filename)}</span>`
+      : escapeHtml(verb || '');
     const safeSub = subtitle ? `<div class="intro-card__body"><p>${escapeHtml(subtitle)}</p></div>` : '';
     const bar = percent === null ? '' : `
       <div class="progress">
@@ -2109,7 +2122,7 @@
     $mount.innerHTML = `
       <div class="intro-card">
         <div class="intro-card__eyebrow">${escapeHtml(eyebrow)}</div>
-        <h2 class="intro-card__title">${safeTitle}</h2>
+        <h2 class="intro-card__title">${titleHtml}</h2>
         ${safeSub}
         ${bar}
       </div>
@@ -2382,21 +2395,24 @@ Answer: The phone number is +1 555-123-4567 [1].`;
     if (!file || file.type !== 'application/pdf') return;
     openOverlay(file.name);
     renderPrepCard({
-      title: `Reading ${file.name}`,
+      verb: 'Reading',
+      filename: file.name,
       subtitle: 'Extracting text from each page in your browser.',
     });
     try {
       const { numPages, pages } = await extractText(file);
       const chunks = chunkText(pages);
       renderPrepCard({
-        title: `Indexing ${file.name}`,
+        verb: 'Indexing',
+        filename: file.name,
         subtitle: `${chunks.length} chunks across ${numPages} ${numPages === 1 ? 'page' : 'pages'}.`,
         percent: 0,
       });
       const embedded = await embedChunks(chunks, (done, total) => {
         const pct = Math.round((done / total) * 100);
         renderPrepCard({
-          title: `Indexing ${file.name}`,
+          verb: 'Indexing',
+          filename: file.name,
           subtitle: `${done} of ${total} chunks embedded.`,
           percent: pct,
         });
@@ -2407,7 +2423,7 @@ Answer: The phone number is +1 555-123-4567 [1].`;
     } catch (err) {
       renderPrepCard({
         eyebrow: 'Error',
-        title: 'Could not read this PDF.',
+        verb: 'Could not read this PDF.',
         subtitle: err.message,
       });
       console.error(err);
