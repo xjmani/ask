@@ -1472,6 +1472,10 @@
       asstEl.dataset.phase = 'retrieving';
       const top = await retrieve(question, 4);
       asstEl.dataset.phase = 'thinking';
+
+      if (top.length > 0 && pdfDoc) {
+        highlightPage(top[0].chunk.pageNumber);
+      }
       const contextBlock = top
         .map((r, i) => `[${i + 1}] (page ${r.chunk.pageNumber}) ${r.chunk.text}`)
         .join('\n\n');
