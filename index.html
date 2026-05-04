@@ -962,23 +962,98 @@
     border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
   }
   .chat__msg--assistant { white-space: pre-wrap; }
-  .chat__thinking {
-    display: inline-flex; gap: .35rem; align-items: center;
-    padding: .25rem 0;
+
+  /* "Thinking" indicator: a miniature splitflap tile (the brand a-to-x card)
+     cycles random letters while a fun verb cycles next to it. Mirrors the
+     hero animation so the brand identity is consistent across the page. */
+  .thinking {
+    display: inline-flex;
+    align-items: center;
+    gap: .6rem;
+    padding: .15rem 0;
   }
-  .chat__dot {
+  .thinking__tile {
+    position: relative;
     display: inline-block;
-    width: 6px; height: 6px; border-radius: 50%;
-    background: var(--accent);
-    opacity: .35;
-    animation: chat-dot 1.2s infinite ease-in-out;
+    width: 16px;
+    height: 24px;
+    font-family: var(--font-mono);
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--accent);
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 3px;
+    perspective: 200px;
+    -webkit-perspective: 200px;
+    overflow: hidden;
+    vertical-align: middle;
+    flex-shrink: 0;
   }
-  .chat__dot:nth-child(2) { animation-delay: .15s; }
-  .chat__dot:nth-child(3) { animation-delay: .3s; }
-  @keyframes chat-dot {
-    0%, 80%, 100% { opacity: .25; transform: scale(.8); }
-    40%           { opacity: 1;   transform: scale(1); }
+  [data-theme="light"] .thinking__tile {
+    background: rgba(0,0,0,.03);
+    border-color: rgba(0,0,0,.08);
   }
+  .thinking__tile::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0;
+    top: 50%;
+    height: 1px;
+    background: rgba(0,0,0,.45);
+    z-index: 4;
+    pointer-events: none;
+  }
+  [data-theme="light"] .thinking__tile::after {
+    background: rgba(255,255,255,.55);
+  }
+  .thinking__tile .flap-static,
+  .thinking__tile .flap-anim {
+    position: absolute;
+    left: 0; right: 0;
+    height: 50%;
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+  }
+  .thinking__tile .flap-static { top: 0; align-items: flex-end; z-index: 1; }
+  .thinking__tile .flap-static .flap-letter { transform: translateY(50%); display: block; }
+  .thinking__tile .flap-static--bottom { top: auto; bottom: 0; align-items: flex-start; }
+  .thinking__tile .flap-static--bottom .flap-letter { transform: translateY(-50%); }
+  .thinking__tile .flap-anim {
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    z-index: 3;
+    background: inherit;
+    will-change: transform;
+  }
+  .thinking__tile .flap-anim--top {
+    top: 0; align-items: flex-end;
+    transform-origin: 50% 100%;
+    transform: rotateX(0deg);
+  }
+  .thinking__tile .flap-anim--top .flap-letter { transform: translateY(50%); display: block; }
+  .thinking__tile .flap-anim--bottom {
+    bottom: 0; align-items: flex-start;
+    transform-origin: 50% 0;
+    transform: rotateX(90deg);
+  }
+  .thinking__tile .flap-anim--bottom .flap-letter { transform: translateY(-50%); display: block; }
+  .thinking__tile .flap-anim--top.flap-flipping    { animation: flap-down-top    .07s linear forwards; }
+  .thinking__tile .flap-anim--bottom.flap-flipping { animation: flap-down-bottom .07s linear forwards; }
+  @keyframes flap-down-top    { from { transform: rotateX(0deg); }  to { transform: rotateX(-90deg); } }
+  @keyframes flap-down-bottom { from { transform: rotateX(90deg); } to { transform: rotateX(0deg); } }
+
+  .thinking__word {
+    font-family: var(--font-mono);
+    font-size: var(--size-mono);
+    color: var(--text-dim);
+    letter-spacing: .02em;
+    white-space: nowrap;
+    transition: opacity .25s var(--ease);
+  }
+  .thinking__word.is-fading { opacity: 0; }
   .chat__form { display: flex; flex-direction: column; gap: .5rem; }
   .chat__input {
     width: 100%;
@@ -1696,6 +1771,103 @@
     }[c]));
   }
 
+  // ---- "Thinking" indicator: mini splitflap + cycling verb -----------------
+  const THINKING_LETTERS = 'abcdefghijklmnopqrstuvwx';
+  const THINKING_WORDS = [
+    'Pondering', 'Reading', 'Skimming', 'Cogitating', 'Parsing',
+    'Considering', 'Inspecting', 'Distilling', 'Combing', 'Annotating',
+    'Whatchamacalling', 'Disambiguating', 'Connecting dots', 'Squinting',
+    'Cross-checking', 'Reasoning',
+  ];
+  function shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function thinkingMarkup(initialWord) {
+    return `
+      <span class="thinking" role="status" aria-live="polite">
+        <span class="thinking__tile" data-thinking-tile>
+          <span class="flap-static" data-flap="static-top"><span class="flap-letter" data-letter>a</span></span>
+          <span class="flap-static flap-static--bottom" data-flap="static-bottom"><span class="flap-letter" data-letter>a</span></span>
+          <span class="flap-anim flap-anim--top" data-flap="flip-top"><span class="flap-letter" data-letter>a</span></span>
+          <span class="flap-anim flap-anim--bottom" data-flap="flip-bottom"><span class="flap-letter" data-letter>a</span></span>
+        </span>
+        <span class="thinking__word" data-thinking-word>${escapeHtml(initialWord)}</span>
+      </span>
+    `;
+  }
+
+  function startThinking(rootEl) {
+    const tile = rootEl.querySelector('[data-thinking-tile]');
+    const word = rootEl.querySelector('[data-thinking-word]');
+    if (!tile || !word) return () => {};
+
+    const staticTop    = tile.querySelector('[data-flap="static-top"] [data-letter]');
+    const staticBottom = tile.querySelector('[data-flap="static-bottom"] [data-letter]');
+    const flipTop      = tile.querySelector('[data-flap="flip-top"] [data-letter]');
+    const flipBottom   = tile.querySelector('[data-flap="flip-bottom"] [data-letter]');
+    const flipTopEl    = tile.querySelector('[data-flap="flip-top"]');
+    const flipBottomEl = tile.querySelector('[data-flap="flip-bottom"]');
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    let cancelled = false;
+    const timers = [];
+    function later(fn, ms) { const id = setTimeout(fn, ms); timers.push(id); return id; }
+
+    function flipLetter(next) {
+      if (cancelled || reduce) {
+        if (staticTop)    staticTop.textContent    = next;
+        if (staticBottom) staticBottom.textContent = next;
+        return;
+      }
+      flipBottom.textContent = next;
+      flipTopEl.classList.add('flap-flipping');
+      later(() => {
+        if (cancelled) return;
+        staticTop.textContent = next;
+        flipTopEl.classList.remove('flap-flipping');
+        flipTop.textContent = next;
+        flipBottomEl.classList.add('flap-flipping');
+        later(() => {
+          if (cancelled) return;
+          staticBottom.textContent = next;
+          flipBottomEl.classList.remove('flap-flipping');
+        }, 70);
+      }, 70);
+    }
+    function tileStep() {
+      if (cancelled) return;
+      flipLetter(THINKING_LETTERS[Math.floor(Math.random() * THINKING_LETTERS.length)]);
+      later(tileStep, 380);
+    }
+    tileStep();
+
+    const queue = shuffle(THINKING_WORDS);
+    let qi = 0;
+    function wordStep() {
+      if (cancelled) return;
+      qi = (qi + 1) % queue.length;
+      word.classList.add('is-fading');
+      later(() => {
+        if (cancelled) return;
+        word.textContent = queue[qi];
+        word.classList.remove('is-fading');
+        later(wordStep, 1700);
+      }, 220);
+    }
+    later(wordStep, 1700);
+
+    return () => {
+      cancelled = true;
+      timers.forEach(clearTimeout);
+    };
+  }
+
   function renderTextSources(asstEl, citations) {
     if (!citations || citations.length === 0) return;
     const sources = document.createElement('details');
@@ -1960,13 +2132,14 @@
     const asstEl = document.createElement('div');
     asstEl.className = 'chat__msg chat__msg--assistant';
     asstEl.dataset.msgId = String(Date.now());
-    const thinkingHtml = `<span class="chat__thinking"><span class="chat__dot"></span><span class="chat__dot"></span><span class="chat__dot"></span></span>`;
+    const initialWord = THINKING_WORDS[Math.floor(Math.random() * THINKING_WORDS.length)];
     const answerEl = document.createElement('div');
     answerEl.className = 'chat__answer';
-    answerEl.innerHTML = thinkingHtml;
+    answerEl.innerHTML = thinkingMarkup(initialWord);
     asstEl.appendChild(answerEl);
     messages.appendChild(asstEl);
     asstEl.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    const stopThinking = startThinking(answerEl);
 
     stop.hidden = false;
     let firstToken = true;
@@ -2024,6 +2197,7 @@ Answer: The phone number is +1 555-123-4567 [1].`;
       for await (const chunk of stream) {
         const delta = chunk.choices?.[0]?.delta?.content || '';
         if (firstToken && delta) {
+          stopThinking();
           answerEl.textContent = '';
           firstToken = false;
         }
@@ -2058,8 +2232,10 @@ Answer: The phone number is +1 555-123-4567 [1].`;
         });
       });
     } catch (err) {
+      stopThinking();
       answerEl.textContent = `Error: ${err.message}`;
     } finally {
+      stopThinking();
       stop.hidden = true;
     }
   }
