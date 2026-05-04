@@ -1695,17 +1695,12 @@
     }
   }
 
-  function goToPage(pageNumber, chunk) {
+  function goToPage(pageNumber) {
     const meta = pageMetas.get(pageNumber);
     if (!meta) return;
     meta.wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    document.querySelectorAll('.pdf-page__highlights').forEach((o) => { o.innerHTML = ''; });
-    if (chunk) {
-      const overlay = meta.wrap.querySelector('.pdf-page__highlights');
-      meta.page.getTextContent().then((tc) => {
-        drawHighlights(overlay, tc.items, meta.viewport, chunk.start, chunk.end);
-      });
-    }
+    meta.wrap.classList.add('is-cited');
+    setTimeout(() => meta.wrap.classList.remove('is-cited'), 1800);
   }
 
   function drawHighlights(layer, items, viewport, start, end) {
@@ -1869,7 +1864,13 @@
       const contextBlock = chosenChunks
         .map((c, i) => `[${i + 1}] (page ${c.pageNumber}) ${c.text}`)
         .join('\n\n');
-      const systemPrompt = `You are a careful reading assistant. Answer the user's question using ONLY the numbered context excerpts below. When you use information from a context excerpt, cite it inline as [1], [2], etc. If the context does not contain the answer, say so plainly. Do not invent facts.`;
+      const systemPrompt = `You are a reading assistant. The numbered passages below come from a document the user has loaded into a private browser tool. Answer the user's question directly in 1-2 sentences using only those passages, then cite which passage you used as [1], [2], etc. Do not invent facts. If the passages don't contain the answer, say so plainly.
+
+Answer directly. Do not begin with phrases like "According to the document," "Based on the excerpt," or any other preamble. Just give the answer.
+
+Example:
+Question: What is the phone number?
+Answer: The phone number is +1 555-123-4567 [1].`;
       const userMsg = `Excerpts:\n\n${contextBlock}\n\nQuestion: ${question}`;
 
       const cites = chosenChunks.map((c, i) => ({
@@ -1906,18 +1907,14 @@
       const { prose, quotes } = parseQuotes(rawText);
       const displayText = prose || rawText;
 
-      // Build the token list to search for in the page: extracted distinctive
-      // tokens from the answer prose, plus any verbatim quotes the model
-      // emitted (rare with the simple prompt, but free if present).
-      const tokens = extractAnswerTokens(displayText);
-      for (const q of quotes.values()) tokens.push(q);
-      asstEl.dataset.tokens = JSON.stringify(tokens);
-
+      // Highlighting was attempted at multiple granularities (chunk, sentence,
+      // model-quote, answer-grounded token) and none aligned reliably across
+      // document layouts. Dropped in favor of plain page navigation: the
+      // viewer scrolls to the cited page, the user reads the page themselves
+      // to verify. Trust signal is "the source is right there," not "look at
+      // this exact phrase."
       if (pdfDoc && cites.length > 0) {
-        const ok = tokens.length > 0
-          ? await highlightAnswerOnPage(cites[0].pageNumber, tokens)
-          : false;
-        if (!ok) goToPage(cites[0].pageNumber);
+        goToPage(cites[0].pageNumber);
       }
 
       answerEl.innerHTML = escapeHtml(displayText).replace(/\[(\d+)\]/g, (_, n) => {
@@ -1927,19 +1924,11 @@
       });
       if (!pdfDoc) renderTextSources(asstEl, cites);
       answerEl.querySelectorAll('.cite-chip').forEach((b) => {
-        b.addEventListener('click', async () => {
-          const marker = Number(b.dataset.marker);
-          const c = findChunkByMarker(cites, marker);
+        b.addEventListener('click', () => {
+          const c = findChunkByMarker(cites, Number(b.dataset.marker));
           if (!c) return;
-          if (pdfDoc) {
-            const toks = JSON.parse(asstEl.dataset.tokens || '[]');
-            const ok = toks.length
-              ? await highlightAnswerOnPage(c.pageNumber, toks)
-              : false;
-            if (!ok) goToPage(c.pageNumber);
-          } else {
-            highlightTextSource(asstEl, c.marker);
-          }
+          if (pdfDoc) goToPage(c.pageNumber);
+          else        highlightTextSource(asstEl, c.marker);
         });
       });
     } catch (err) {
