@@ -745,12 +745,11 @@
   }
   .pdf-viewer__canvas-wrap {
     position: relative;
-    overflow: auto;
+    overflow-y: auto;
+    overflow-x: hidden;
     padding: 1rem;
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: .75rem;
+    flex: 1 1 0;
+    min-height: 0;
     scroll-behavior: smooth;
   }
   .pdf-page {
@@ -758,11 +757,12 @@
     background: #fff;
     border-radius: 4px;
     box-shadow: 0 1px 3px rgba(0,0,0,.25);
-    width: 100%;
+    margin-bottom: .75rem;
     border: 2px solid transparent;
     transition: border-color .25s var(--ease), box-shadow .25s var(--ease);
     overflow: hidden;
   }
+  .pdf-page:last-child { margin-bottom: 0; }
   .pdf-page__canvas {
     display: block;
     width: 100%;
@@ -1669,22 +1669,17 @@
       const pageWrap = document.createElement('div');
       pageWrap.className = 'pdf-page';
       pageWrap.dataset.page = String(i);
-      pageWrap.style.aspectRatio = `${viewport.width} / ${viewport.height}`;
 
       const canvas = document.createElement('canvas');
       canvas.className = 'pdf-page__canvas';
       canvas.width = viewport.width;
       canvas.height = viewport.height;
 
-      const overlay = document.createElement('div');
-      overlay.className = 'pdf-page__highlights';
-
       const label = document.createElement('span');
       label.className = 'pdf-page__label';
       label.textContent = `p.${i}`;
 
       pageWrap.appendChild(canvas);
-      pageWrap.appendChild(overlay);
       pageWrap.appendChild(label);
       wrap.appendChild(pageWrap);
 
