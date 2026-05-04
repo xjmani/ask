@@ -447,8 +447,6 @@
     .privacy svg { width: 16px; height: 16px; }
     .section__head { margin-bottom: 1.75rem; }
     .proof, .home__grid { gap: 1.25rem; }
-    .ask-grid { grid-template-columns: 1fr; gap: 1rem; }
-    .pdf-pane { position: static; max-height: 60vh; }
     .chat__input { font-size: 16px; }
     .model-card, .webgpu-gate { padding: 1.25rem; }
     .doc-sidebar { padding: .75rem; }
@@ -696,47 +694,70 @@
     color: var(--text-dim);
   }
 
-  .ask-grid { display: grid; grid-template-columns: 1fr; gap: 1.25rem; }
-  @media (min-width: 960px) {
-    .ask-grid { grid-template-columns: 1fr 1fr; align-items: start; }
-    .ask-grid--single { grid-template-columns: 1fr; max-width: 760px; margin: 0 auto; }
-    .pdf-pane { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow: auto; }
+  .chat { max-width: 760px; margin: 0 auto; }
+
+  .sources {
+    margin-top: 1rem;
+    border-top: 1px solid var(--border);
+    padding-top: .75rem;
   }
-  .pdf-pane {
-    border: 1px solid var(--border);
-    background: var(--bg-card);
-    border-radius: 12px;
-    padding: .75rem;
+  .sources > summary {
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: var(--size-mono);
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    list-style: none;
+    user-select: none;
+  }
+  .sources > summary::-webkit-details-marker { display: none; }
+  .sources > summary::before {
+    content: '▶';
+    display: inline-block;
+    margin-right: .5rem;
+    transition: transform .2s var(--ease);
+    font-size: 9px;
+    color: var(--accent);
+  }
+  .sources[open] > summary::before { transform: rotate(90deg); }
+  .sources__count {
+    margin-left: .35rem;
+    color: var(--accent);
+  }
+  .sources__list {
+    list-style: none;
+    padding: 0;
+    margin: .75rem 0 0;
     display: flex;
     flex-direction: column;
-    gap: .75rem;
+    gap: .5rem;
   }
-  .pdf-page {
-    position: relative;
-    background: #fff;
-    border-radius: 4px;
-    width: 100%;
-    border: 2px solid transparent;
-    transition: border-color .25s var(--ease), box-shadow .25s var(--ease);
-    overflow: hidden;
+  .source {
+    border: 1px solid var(--border);
+    background: var(--bg-raised);
+    border-radius: 8px;
+    padding: .75rem .9rem;
+    transition: border-color .25s var(--ease), background .25s var(--ease);
   }
-  .pdf-page canvas { width: 100%; height: auto; display: block; }
-  .pdf-page__label {
-    position: absolute;
-    top: .35rem; right: .55rem;
-    z-index: 1;
+  .source__pin {
+    display: inline-block;
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--text-mute);
-    background: rgba(0,0,0,.6);
-    color: #fff;
-    padding: .1rem .4rem;
-    border-radius: 4px;
-    pointer-events: none;
+    color: var(--accent);
+    margin-bottom: .35rem;
+    letter-spacing: .03em;
   }
-  .pdf-page.is-cited {
+  .source__text {
+    margin: 0;
+    font-size: var(--size-small);
+    color: var(--text-dim);
+    line-height: 1.55;
+    white-space: pre-wrap;
+  }
+  .source.is-cited {
     border-color: var(--accent);
-    box-shadow: 0 0 0 4px var(--accent-dim);
+    background: color-mix(in srgb, var(--accent) 8%, var(--bg-raised));
   }
 
   .cite-chip {
@@ -1314,59 +1335,37 @@
     return { numPages: pdfDoc.numPages, pages };
   }
 
-  async function renderPdfPane() {
-    if (!pdfDoc) return;
-    const pane = document.querySelector('.pdf-pane');
-    if (!pane) return;
-    pane.innerHTML = '';
-    const metas = [];
-    for (let i = 1; i <= pdfDoc.numPages; i++) {
-      const page = await pdfDoc.getPage(i);
-      const v = page.getViewport({ scale: 1.5 });
-      const wrap = document.createElement('div');
-      wrap.className = 'pdf-page';
-      wrap.dataset.page = String(i);
-      wrap.style.aspectRatio = `${v.width} / ${v.height}`;
-      const label = document.createElement('span');
-      label.className = 'pdf-page__label';
-      label.textContent = `p.${i}`;
-      wrap.appendChild(label);
-      pane.appendChild(wrap);
-      metas.push({ wrap, page });
-    }
-    const observer = new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        if (!entry.isIntersecting) continue;
-        const wrap = entry.target;
-        if (wrap.dataset.rendered === 'true') continue;
-        wrap.dataset.rendered = 'true';
-        observer.unobserve(wrap);
-        const meta = metas.find((m) => m.wrap === wrap);
-        if (meta) renderPageInto(wrap, meta.page);
-      }
-    }, { root: pane, rootMargin: '600px' });
-    metas.forEach((m) => observer.observe(m.wrap));
+  function renderSources(asstEl, citations) {
+    if (!citations || citations.length === 0) return;
+    const sources = document.createElement('details');
+    sources.className = 'sources';
+    sources.open = true;
+    sources.innerHTML = `
+      <summary>Sources <span class="sources__count">${citations.length}</span></summary>
+      <ol class="sources__list">
+        ${citations.map((c) => `
+          <li class="source" id="source-${asstEl.dataset.msgId}-${c.marker}">
+            <span class="source__pin">[${c.marker}] p.${c.pageNumber}</span>
+            <p class="source__text">${escapeHtml(c.text)}</p>
+          </li>
+        `).join('')}
+      </ol>
+    `;
+    asstEl.appendChild(sources);
   }
 
-  async function renderPageInto(wrap, page) {
-    const v = page.getViewport({ scale: 1.5 });
-    const canvas = document.createElement('canvas');
-    canvas.width = v.width;
-    canvas.height = v.height;
-    wrap.appendChild(canvas);
-    try {
-      await page.render({ canvasContext: canvas.getContext('2d'), viewport: v }).promise;
-    } catch (err) {
-      console.error('renderPageInto', err);
-    }
+  function highlightSource(asstEl, marker) {
+    const el = document.getElementById(`source-${asstEl.dataset.msgId}-${marker}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('is-cited');
+    setTimeout(() => el.classList.remove('is-cited'), 2200);
   }
 
-  function highlightPage(pageNumber) {
-    const wrap = document.querySelector(`.pdf-page[data-page="${pageNumber}"]`);
-    if (!wrap) return;
-    wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    wrap.classList.add('is-cited');
-    setTimeout(() => wrap.classList.remove('is-cited'), 2200);
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
   }
 
   function setStatus(msg) {
@@ -1417,20 +1416,16 @@
   }
 
   function renderChat() {
-    const hasPdf = !!pdfDoc;
     $mount.innerHTML = `
-      <div class="ask-grid${hasPdf ? '' : ' ask-grid--single'}">
-        <div class="chat">
-          <div class="chat__messages" id="chatMessages"></div>
-          <form class="chat__form" id="chatForm">
-            <textarea class="chat__input" id="chatInput" placeholder="Ask a question about this document..." rows="2"></textarea>
-            <div class="chat__actions">
-              <button type="button" class="chat__stop" id="chatStop" hidden>Stop</button>
-              <button type="submit" class="chat__send btn-primary">Send</button>
-            </div>
-          </form>
-        </div>
-        ${hasPdf ? `<div class="pdf-pane"></div>` : ''}
+      <div class="chat">
+        <div class="chat__messages" id="chatMessages"></div>
+        <form class="chat__form" id="chatForm">
+          <textarea class="chat__input" id="chatInput" placeholder="Ask a question about this document..." rows="2"></textarea>
+          <div class="chat__actions">
+            <button type="button" class="chat__stop" id="chatStop" hidden>Stop</button>
+            <button type="submit" class="chat__send btn-primary">Send</button>
+          </div>
+        </form>
       </div>
     `;
     document.getElementById('chatForm').addEventListener('submit', onAsk);
@@ -1443,7 +1438,6 @@
     document.getElementById('chatStop').addEventListener('click', () => {
       if (llmEngine) llmEngine.interruptGenerate();
     });
-    if (hasPdf) renderPdfPane();
   }
 
   async function onAsk(e) {
@@ -1462,7 +1456,12 @@
 
     const asstEl = document.createElement('div');
     asstEl.className = 'chat__msg chat__msg--assistant';
-    asstEl.innerHTML = `<span class="chat__thinking"><span class="chat__dot"></span><span class="chat__dot"></span><span class="chat__dot"></span></span>`;
+    asstEl.dataset.msgId = String(Date.now());
+    const thinkingHtml = `<span class="chat__thinking"><span class="chat__dot"></span><span class="chat__dot"></span><span class="chat__dot"></span></span>`;
+    const answerEl = document.createElement('div');
+    answerEl.className = 'chat__answer';
+    answerEl.innerHTML = thinkingHtml;
+    asstEl.appendChild(answerEl);
     messages.appendChild(asstEl);
     asstEl.scrollIntoView({ behavior: 'smooth', block: 'end' });
 
@@ -1472,21 +1471,17 @@
       asstEl.dataset.phase = 'retrieving';
       const top = await retrieve(question, 4);
       asstEl.dataset.phase = 'thinking';
-
-      if (top.length > 0 && pdfDoc) {
-        highlightPage(top[0].chunk.pageNumber);
-      }
       const contextBlock = top
         .map((r, i) => `[${i + 1}] (page ${r.chunk.pageNumber}) ${r.chunk.text}`)
         .join('\n\n');
       const systemPrompt = `You are a careful reading assistant. Answer the user's question using ONLY the numbered context excerpts below. When you use information from a context excerpt, cite it inline as [1], [2], etc. If the context does not contain the answer, say so plainly. Do not invent facts.`;
       const userMsg = `Context:\n\n${contextBlock}\n\nQuestion: ${question}`;
 
-      asstEl.dataset.citations = JSON.stringify(top.map((r, i) => ({
+      const cites = top.map((r, i) => ({
         marker: i + 1,
         pageNumber: r.chunk.pageNumber,
         text: r.chunk.text,
-      })));
+      }));
 
       const stream = await llmEngine.chat.completions.create({
         stream: true,
@@ -1498,23 +1493,23 @@
       for await (const chunk of stream) {
         const delta = chunk.choices?.[0]?.delta?.content || '';
         if (firstToken && delta) {
-          asstEl.textContent = '';
+          answerEl.textContent = '';
           firstToken = false;
         }
-        asstEl.textContent += delta;
+        answerEl.textContent += delta;
       }
-      const cites = JSON.parse(asstEl.dataset.citations || '[]');
-      const rawText = asstEl.textContent;
-      asstEl.innerHTML = rawText.replace(/\[(\d+)\]/g, (_, n) => {
+      const rawText = answerEl.textContent;
+      answerEl.innerHTML = escapeHtml(rawText).replace(/\[(\d+)\]/g, (_, n) => {
         const c = cites.find((x) => String(x.marker) === n);
         if (!c) return `[${n}]`;
-        return `<button class="cite-chip" data-page="${c.pageNumber}">[${n}] p.${c.pageNumber}</button>`;
+        return `<button class="cite-chip" data-marker="${c.marker}">[${n}] p.${c.pageNumber}</button>`;
       });
-      asstEl.querySelectorAll('.cite-chip').forEach((b) => {
-        b.addEventListener('click', () => highlightPage(Number(b.dataset.page)));
+      renderSources(asstEl, cites);
+      answerEl.querySelectorAll('.cite-chip').forEach((b) => {
+        b.addEventListener('click', () => highlightSource(asstEl, Number(b.dataset.marker)));
       });
     } catch (err) {
-      asstEl.textContent = `Error: ${err.message}`;
+      answerEl.textContent = `Error: ${err.message}`;
     } finally {
       stop.hidden = true;
     }
