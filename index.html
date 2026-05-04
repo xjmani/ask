@@ -449,7 +449,8 @@
     .proof, .home__grid { gap: 1.25rem; }
     .chat__input { font-size: 16px; }
     .model-card, .webgpu-gate { padding: 1.25rem; }
-    .doc-sidebar { padding: .75rem; }
+    .ask-overlay__body { padding: 1rem; }
+    .ask-overlay__head { padding: .65rem .9rem; }
   }
   /* ==========================================================
      FOOTER — slim status-bar that mirrors the header. Same
@@ -624,46 +625,6 @@
     margin-bottom: 1rem;
   }
 
-  .doc-sidebar {
-    margin-bottom: 1.25rem;
-    padding: 1rem;
-    border: 1px solid var(--border);
-    background: var(--bg-card);
-    border-radius: 10px;
-  }
-  .doc-sidebar h4 {
-    margin: 0 0 .5rem;
-    color: var(--text-dim);
-    font-size: var(--size-small);
-    font-family: var(--font-mono);
-    text-transform: uppercase;
-    letter-spacing: .1em;
-  }
-  .doc-sidebar ul { list-style: none; padding: 0; margin: 0; }
-  .doc-sidebar li { display: flex; gap: .5rem; padding: .25rem 0; }
-  .doc-sidebar button:not(.doc-del) {
-    flex: 1; text-align: left;
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: .4rem .65rem;
-    border-radius: 6px;
-    font-family: var(--font-body);
-    cursor: pointer;
-  }
-  .doc-sidebar button:not(.doc-del):hover {
-    border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
-  }
-  .doc-sidebar .doc-del {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--text-mute);
-    padding: .4rem .65rem;
-    border-radius: 6px;
-    cursor: pointer;
-  }
-  .doc-sidebar .doc-del:hover { color: var(--text); }
-
   .btn-primary {
     display: inline-flex; align-items: center; gap: .5rem;
     padding: .7rem 1.15rem;
@@ -694,10 +655,95 @@
     color: var(--text-dim);
   }
 
-  .ask-grid { display: grid; grid-template-columns: 1fr; gap: 1.25rem; }
+  /* ============================================================
+     ASK OVERLAY. Full-viewport workspace shown after a PDF loads.
+     ============================================================ */
+  .ask-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: var(--bg);
+    display: grid;
+    grid-template-rows: auto 1fr;
+    overflow: hidden;
+  }
+  .ask-overlay[hidden] { display: none; }
+  .ask-overlay__head {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: .85rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-card);
+    padding-top: calc(.85rem + env(safe-area-inset-top, 0px));
+  }
+  .ask-overlay__brand {
+    font-family: var(--font-mono);
+    font-size: var(--size-mono);
+    color: var(--text-dim);
+    letter-spacing: .02em;
+  }
+  .ask-overlay__brand .x { color: var(--green); font-weight: 600; }
+  .ask-overlay__title {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--size-small);
+    color: var(--text);
+    font-weight: 500;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .ask-overlay__min {
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color .2s var(--ease), color .2s var(--ease);
+  }
+  .ask-overlay__min:hover {
+    border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+    color: var(--accent);
+  }
+  .ask-overlay__min svg { width: 18px; height: 18px; }
+  .ask-overlay__body {
+    overflow: hidden;
+    padding: 1.25rem;
+    min-height: 0;
+  }
+
+  .ask-resume {
+    position: fixed;
+    bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+    right: 1.5rem;
+    z-index: 90;
+    padding: .65rem 1.1rem;
+    background: var(--accent);
+    color: #0e0c1f;
+    border: none;
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: var(--size-small);
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 6px 18px var(--accent-dim), 0 1px 0 rgba(0,0,0,.05);
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    transition: transform .2s var(--ease);
+  }
+  .ask-resume:hover { transform: translateY(-1px); }
+  .ask-resume[hidden] { display: none; }
+
+  .ask-grid { display: grid; grid-template-columns: 1fr; gap: 1.25rem; height: 100%; min-height: 0; }
   .ask-grid--single .chat { max-width: 760px; margin: 0 auto; }
   @media (min-width: 1024px) {
-    .ask-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); align-items: start; }
+    .ask-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); align-items: stretch; }
   }
 
   .pdf-viewer {
@@ -707,13 +753,8 @@
     overflow: hidden;
     display: grid;
     grid-template-rows: auto 1fr;
-  }
-  @media (min-width: 1024px) {
-    .pdf-viewer {
-      position: sticky;
-      top: 1rem;
-      height: calc(100vh - 2rem);
-    }
+    height: 100%;
+    min-height: 0;
   }
   .pdf-viewer__head {
     display: flex; align-items: center; gap: .75rem;
@@ -877,10 +918,19 @@
   }
   .cite-chip:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); }
 
-  .chat { display: flex; flex-direction: column; gap: 1rem; }
+  .chat {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    height: 100%;
+    min-height: 0;
+  }
   .chat__messages {
     display: flex; flex-direction: column; gap: 1rem;
-    min-height: 200px;
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding-right: .25rem;
   }
   .chat__msg {
     border: 1px solid var(--border);
@@ -1142,13 +1192,6 @@
     </div>
   </section>
 
-  <section class="workspace" hidden>
-    <div class="container">
-      <div id="ask-app"></div>
-    </div>
-  </section>
-
-
   <!-- ============================================================
        PROOF — privacy claims with verification hooks
        ============================================================ -->
@@ -1244,6 +1287,32 @@
   </div>
 </footer>
 
+<!-- ============================================================
+     ASK OVERLAY. Fixed full-viewport workspace that opens when a
+     PDF is loaded. Minimize collapses it back to the landing
+     page; a floating "Return to chat" pill re-opens it. State
+     (chat, embeddings, model) is preserved across minimize.
+     ============================================================ -->
+<aside class="ask-overlay" id="askOverlay" hidden aria-label="Document chat">
+  <header class="ask-overlay__head">
+    <span class="ask-overlay__brand"><span class="x">x</span>jmani / ask</span>
+    <span class="ask-overlay__title" id="askOverlayTitle"></span>
+    <button class="ask-overlay__min" id="askOverlayMin" type="button" aria-label="Minimize chat">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+        <path d="M5 12h14"/>
+      </svg>
+    </button>
+  </header>
+  <div class="ask-overlay__body" id="ask-app"></div>
+</aside>
+
+<button class="ask-resume" id="askResume" type="button" hidden>
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M5 9l7 7 7-7"/>
+  </svg>
+  <span id="askResumeLabel">Return to chat</span>
+</button>
+
 <script type="module">
   import * as pdfjs from './vendor/pdf.min.mjs';
   import { pipeline, env } from './vendor/transformers.min.js';
@@ -1252,70 +1321,6 @@
   env.allowRemoteModels = false;
   env.localModelPath = './vendor/embeddings/';
   env.backends.onnx.wasm.wasmPaths = './vendor/';
-
-  // ---- IndexedDB persistence -----------------------------------------------
-  const DB_NAME = 'ask';
-  const DB_VERSION = 1;
-  function openDB() {
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, DB_VERSION);
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains('documents')) {
-          db.createObjectStore('documents', { keyPath: 'id' });
-        }
-        if (!db.objectStoreNames.contains('chunks')) {
-          db.createObjectStore('chunks', { keyPath: ['docId', 'index'] });
-        }
-      };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror   = () => reject(req.error);
-    });
-  }
-  async function saveDoc({ id, name, byteSize, numPages, chunks }) {
-    const db = await openDB();
-    const tx = db.transaction(['documents', 'chunks'], 'readwrite');
-    tx.objectStore('documents').put({ id, name, byteSize, numPages, addedAt: Date.now() });
-    for (let i = 0; i < chunks.length; i++) {
-      tx.objectStore('chunks').put({ docId: id, index: i, ...chunks[i] });
-    }
-    return new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
-  }
-  async function listDocs() {
-    const db = await openDB();
-    return new Promise((res) => {
-      const out = [];
-      const tx = db.transaction('documents', 'readonly');
-      tx.objectStore('documents').openCursor().onsuccess = (e) => {
-        const cur = e.target.result;
-        if (cur) { out.push(cur.value); cur.continue(); } else { res(out); }
-      };
-    });
-  }
-  async function loadChunks(id) {
-    const db = await openDB();
-    return new Promise((res) => {
-      const chunks = [];
-      const tx = db.transaction('chunks', 'readonly');
-      const range = IDBKeyRange.bound([id, -Infinity], [id, Infinity]);
-      tx.objectStore('chunks').openCursor(range).onsuccess = (e) => {
-        const cur = e.target.result;
-        if (cur) { chunks.push(cur.value); cur.continue(); } else { res(chunks); }
-      };
-    });
-  }
-  async function deleteDoc(id) {
-    const db = await openDB();
-    const tx = db.transaction(['documents', 'chunks'], 'readwrite');
-    tx.objectStore('documents').delete(id);
-    const store = tx.objectStore('chunks');
-    const range = IDBKeyRange.bound([id, -Infinity], [id, Infinity]);
-    store.openCursor(range).onsuccess = (e) => {
-      const cur = e.target.result;
-      if (cur) { store.delete(cur.primaryKey); cur.continue(); }
-    };
-    return new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
-  }
 
   const MODEL_ID = 'Llama-3.2-3B-Instruct-q4f16_1-MLC';
   let llmEngine = null;
@@ -1578,13 +1583,41 @@
   const $drop      = document.getElementById('drop');
   const $fileInput = document.getElementById('fileInput');
   const $pickBtn   = document.getElementById('pickBtn');
-  const $workspace = document.querySelector('.workspace');
+  const $overlay   = document.getElementById('askOverlay');
+  const $overlayTitle = document.getElementById('askOverlayTitle');
+  const $overlayMin   = document.getElementById('askOverlayMin');
+  const $resume       = document.getElementById('askResume');
+  const $resumeLabel  = document.getElementById('askResumeLabel');
   const $mount     = document.getElementById('ask-app');
+
+  function openOverlay(title) {
+    if (title) $overlayTitle.textContent = title;
+    $overlay.hidden = false;
+    $resume.hidden = true;
+    document.body.style.overflow = 'hidden';
+  }
+  function minimizeOverlay() {
+    $overlay.hidden = true;
+    if ($overlayTitle.textContent) {
+      $resumeLabel.textContent = `Return to chat`;
+      $resume.hidden = false;
+    }
+    document.body.style.overflow = '';
+  }
+  $overlayMin.addEventListener('click', minimizeOverlay);
+  $resume.addEventListener('click', () => {
+    $overlay.hidden = false;
+    $resume.hidden = true;
+    document.body.style.overflow = 'hidden';
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$overlay.hidden) minimizeOverlay();
+  });
 
   // ---- WebGPU gate ----------------------------------------------------------
   const hasWebGPU = !!navigator.gpu;
   if (!hasWebGPU) {
-    $workspace.removeAttribute('hidden');
+    openOverlay('Browser support');
     $mount.innerHTML = `
       <div class="webgpu-gate">
         <h3>This tool needs WebGPU.</h3>
@@ -1938,7 +1971,7 @@ Answer: The phone number is +1 555-123-4567 [1].`;
 
   async function handleFile(file) {
     if (!file || file.type !== 'application/pdf') return;
-    $workspace.removeAttribute('hidden');
+    openOverlay(file.name);
     $mount.innerHTML = `<div class="ask-status">Reading ${file.name}...</div>`;
     try {
       const { numPages, pages } = await extractText(file);
@@ -1947,67 +1980,13 @@ Answer: The phone number is +1 555-123-4567 [1].`;
       const embedded = await embedChunks(chunks, (done, total) => {
         setStatus(`Embedding ${done} of ${total}...`);
       });
-      const docId = `${file.name}-${file.size}`;
-      window.__askDoc = { id: docId, file, pages, chunks: embedded };
-      await saveDoc({ id: docId, name: file.name, byteSize: file.size, numPages, chunks: embedded });
+      window.__askDoc = { file, pages, chunks: embedded };
       await showModelDisclosure();
       renderChat();
     } catch (err) {
       $mount.textContent = `Could not read this PDF. ${err.message}`;
       console.error(err);
     }
-  }
-
-  async function reopenDoc(id, name) {
-    $workspace.removeAttribute('hidden');
-    $mount.innerHTML = `<div class="ask-status">Reopening ${name}...</div>`;
-    try {
-      const chunks = await loadChunks(id);
-      window.__askDoc = { id, file: null, pages: null, chunks };
-      pdfDoc = null;
-      await showModelDisclosure();
-      renderChat();
-    } catch (err) {
-      $mount.textContent = `Could not reopen this document. ${err.message}`;
-      console.error(err);
-    }
-  }
-
-  async function renderSidebar() {
-    const docs = await listDocs();
-    const existing = document.getElementById('docSidebar');
-    if (existing) existing.remove();
-    if (!docs.length) return;
-    $workspace.removeAttribute('hidden');
-    const aside = document.createElement('aside');
-    aside.id = 'docSidebar';
-    aside.className = 'doc-sidebar';
-    aside.innerHTML = `
-      <h4>Previous documents</h4>
-      <ul>
-        ${docs.map(d => `
-          <li>
-            <button data-id="${d.id}" data-name="${d.name.replace(/"/g, '&quot;')}">${d.name}</button>
-            <button class="doc-del" data-id="${d.id}" aria-label="Delete ${d.name}">x</button>
-          </li>
-        `).join('')}
-      </ul>
-    `;
-    $mount.parentElement.insertBefore(aside, $mount);
-    aside.querySelectorAll('button:not(.doc-del)').forEach(b => {
-      b.addEventListener('click', () => reopenDoc(b.dataset.id, b.dataset.name));
-    });
-    aside.querySelectorAll('.doc-del').forEach(b => {
-      b.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        await deleteDoc(b.dataset.id);
-        await renderSidebar();
-      });
-    });
-  }
-
-  if (hasWebGPU) {
-    renderSidebar();
   }
 
   $pickBtn.addEventListener('click', () => $fileInput.click());
