@@ -1569,15 +1569,16 @@
   env.localModelPath = './vendor/embeddings/';
   env.backends.onnx.wasm.wasmPaths = './vendor/';
 
-  // Default desktop model (~2 GB) and an iOS fallback model (~700 MB) that
-  // fits inside iOS Safari's per-origin Cache Storage quota. The iOS gate
-  // can switch chosenModelId to the light one before the user proceeds.
+  // Default desktop model (~2 GB) and a mobile fallback (~350 MB Qwen 2.5
+  // 0.5B) that fits inside the per-origin Cache Storage caps mobile browsers
+  // enforce. Tested 1B and that gets evicted under iOS pressure; 0.5B is the
+  // smallest size class that has any chance of staying cached on phones.
   const MODEL_DEFAULT = 'Llama-3.2-3B-Instruct-q4f16_1-MLC';
-  const MODEL_LIGHT   = 'Llama-3.2-1B-Instruct-q4f16_1-MLC';
+  const MODEL_LIGHT   = 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC';
   let chosenModelId = MODEL_DEFAULT;
   function modelLabel() {
     return chosenModelId === MODEL_LIGHT
-      ? 'Llama 3.2 1B, on-device'
+      ? 'Qwen 2.5 0.5B, on-device'
       : 'Llama 3.2 3B, on-device';
   }
   let llmEngine = null;
@@ -1889,11 +1890,23 @@
     if (uaData && typeof uaData.mobile === 'boolean') return uaData.mobile;
     const ua = navigator.userAgent;
     if (/Mobi|Android|iPhone|iPad|iPod/i.test(ua)) return true;
-    // iPadOS 13+ reports MacIntel with touch points; catch that.
     if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) return true;
     return false;
   }
   const isMobile = detectMobile();
+  // Already installed to home screen / launched as a PWA? Both Android Chrome
+  // and iOS Safari expose this; the hint is the same in both ecosystems.
+  const isStandalone =
+    window.matchMedia('(display-mode: standalone)').matches ||
+    window.navigator.standalone === true;
+
+  // Ask the browser to mark our storage as persistent (exempt from automatic
+  // eviction). Browsers may grant or deny silently; we just try and continue.
+  async function requestPersistentStorage() {
+    if (!navigator.storage || !navigator.storage.persist) return false;
+    try { return await navigator.storage.persist(); }
+    catch { return false; }
+  }
   function gateOff() {
     $drop.setAttribute('aria-disabled', 'true');
     $drop.style.pointerEvents = 'none';
@@ -1916,22 +1929,27 @@
     gateOff();
   } else if (isMobile) {
     openOverlay('Device check');
+    const homeScreenHint = !isStandalone ? `
+      <p class="intro-card__sub">For better stability, install the tool to your home screen using your browser's <strong>"Add to Home Screen"</strong> option, then open it from there. Installed pages get a larger storage budget.</p>
+    ` : '';
     $mount.innerHTML = `
       <div class="intro-card">
         <div class="intro-card__eyebrow">Device check</div>
-        <h2 class="intro-card__title">Mobile storage is usually too tight for the default model.</h2>
+        <h2 class="intro-card__title">Mobile storage is tight for AI models.</h2>
         <div class="intro-card__body">
-          <p>The default model needs about <strong>2 GB</strong> of browser cache. Mobile browsers (Safari on iOS, Chrome on Android, and others) cap per-site cache well below that, so the full model often fails partway through. We can try a smaller <strong>700 MB Llama 3.2 1B</strong> model instead. It might still run into storage limits on tight devices, and answers are noticeably less reliable than the 3B desktop default.</p>
+          <p>The desktop tool runs a 2 GB model that won't fit in mobile browser cache. We can try a much smaller <strong>350 MB Qwen 2.5 0.5B</strong> model instead. It fits more reliably on phones, but answers will be noticeably less polished than the desktop default.</p>
+          ${homeScreenHint}
           <p class="intro-card__sub">For best results, open <strong>ask.xjmani.com</strong> on a desktop or laptop instead.</p>
         </div>
         <div class="intro-card__actions">
-          <button class="btn-primary" id="useLightModelBtn">Try the 1B model</button>
+          <button class="btn-primary" id="useLightModelBtn">Try the small model</button>
         </div>
       </div>
     `;
     gateOff();
-    document.getElementById('useLightModelBtn').addEventListener('click', () => {
+    document.getElementById('useLightModelBtn').addEventListener('click', async () => {
       chosenModelId = MODEL_LIGHT;
+      await requestPersistentStorage();
       $drop.removeAttribute('aria-disabled');
       $drop.style.pointerEvents = '';
       $drop.style.opacity = '';
@@ -2256,7 +2274,7 @@
 
   function showModelDownloadCard() {
     return new Promise((resolve, reject) => {
-      const sizeLabel = chosenModelId === MODEL_LIGHT ? '700 MB' : '2 GB';
+      const sizeLabel = chosenModelId === MODEL_LIGHT ? '350 MB' : '2 GB';
       $mount.innerHTML = `
         <div class="intro-card">
           <div class="intro-card__eyebrow">First-time setup</div>
@@ -2598,7 +2616,7 @@ Answer: The phone number is +1 555-123-4567 [1].`;
         eyebrow: 'Model load failed',
         verb: isStorageErr ? 'Not enough browser storage.' : 'Could not load the model.',
         subtitle: isStorageErr
-          ? 'Your browser ran out of cache space while downloading the model. Mobile browsers cap per-site storage well below the size the default model needs. Open ask.xjmani.com on a desktop or laptop, or refresh and choose the smaller 1B model from the device-check screen.'
+          ? 'Your browser ran out of cache space while downloading the model. Mobile browsers cap per-site storage well below the size the default model needs. Open ask.xjmani.com on a desktop or laptop, or refresh and choose the smaller 0.5B model from the device-check screen.'
           : raw,
       });
       console.error('prepareModel failed:', err);
