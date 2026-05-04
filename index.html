@@ -1889,7 +1889,7 @@
     function tileStep() {
       if (cancelled) return;
       flipLetter(THINKING_LETTERS[Math.floor(Math.random() * THINKING_LETTERS.length)]);
-      later(tileStep, 380);
+      later(tileStep, 520);
     }
     tileStep();
 
@@ -1903,10 +1903,10 @@
         if (cancelled) return;
         word.textContent = queue[qi];
         word.classList.remove('is-fading');
-        later(wordStep, 1700);
-      }, 220);
+        later(wordStep, 3200);
+      }, 280);
     }
-    later(wordStep, 1700);
+    later(wordStep, 3200);
 
     return () => {
       cancelled = true;
