@@ -102,6 +102,9 @@
     --red:       #f87171;
     --red-dim:   rgba(248,113,113,.14);
     --amber:     #fbbf24;
+
+    --accent:     var(--purple);
+    --accent-dim: var(--purple-dim);
     --white:     #fafafa;
 
     --font-body:  'Outfit', system-ui, sans-serif;
@@ -263,7 +266,7 @@
     right: .45rem;
     bottom: .25rem;
     height: 1px;
-    background: linear-gradient(90deg, var(--red), transparent 100%);
+    background: linear-gradient(90deg, var(--accent), transparent 100%);
     opacity: .7;
   }
   .hdr__crumb-sep {
@@ -301,7 +304,7 @@
     content: '';
     position: absolute; inset: 0;
     pointer-events: none;
-    background: radial-gradient(40% 50% at 80% 10%, var(--red-dim) 0%, transparent 70%);
+    background: radial-gradient(40% 50% at 80% 10%, var(--accent-dim) 0%, transparent 70%);
     opacity: .8;
     z-index: -1;
   }
@@ -318,8 +321,8 @@
   }
   .hero__eyebrow::before {
     content: ''; width: 6px; height: 6px; border-radius: 999px;
-    background: var(--red);
-    box-shadow: 0 0 0 3px var(--red-dim);
+    background: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-dim);
   }
   .hero__title {
     font-family: var(--font-body);
@@ -331,7 +334,7 @@
     color: var(--text);
   }
   .hero__title .accent {
-    background: linear-gradient(90deg, var(--red), color-mix(in srgb, var(--red) 50%, var(--purple)));
+    background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 50%, #e0c4ff));
     -webkit-background-clip: text; background-clip: text; color: transparent;
   }
   .hero__sub {
@@ -347,9 +350,9 @@
      ========================================================== */
   .drop {
     position: relative;
-    border: 1px dashed color-mix(in srgb, var(--red) 35%, var(--border) 65%);
+    border: 1px dashed color-mix(in srgb, var(--accent) 35%, var(--border) 65%);
     background:
-      linear-gradient(180deg, color-mix(in srgb, var(--red) 4%, transparent), transparent 60%),
+      linear-gradient(180deg, color-mix(in srgb, var(--accent) 4%, transparent), transparent 60%),
       var(--bg-card);
     border-radius: 16px;
     padding: clamp(2.25rem, 5vw, 3.5rem) clamp(1.5rem, 3vw, 2.25rem);
@@ -360,16 +363,16 @@
   .drop::before {
     content: '';
     position: absolute; inset: 0;
-    background-image: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--red) 40%, transparent) 1px, transparent 0);
+    background-image: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--accent) 40%, transparent) 1px, transparent 0);
     background-size: 18px 18px;
     opacity: .12;
     pointer-events: none;
     transition: opacity .25s var(--ease);
   }
   .drop[data-active="true"] {
-    border-color: var(--red);
+    border-color: var(--accent);
     background:
-      linear-gradient(180deg, color-mix(in srgb, var(--red) 10%, transparent), transparent 70%),
+      linear-gradient(180deg, color-mix(in srgb, var(--accent) 10%, transparent), transparent 70%),
       var(--bg-card);
     transform: scale(1.005);
   }
@@ -381,12 +384,12 @@
     border: 1px solid var(--border-hover);
     background: var(--surface);
     border-radius: 14px;
-    color: var(--red);
+    color: var(--accent);
     transition: all .25s var(--ease);
   }
   .drop[data-active="true"] .drop__icon {
-    border-color: var(--red);
-    background: var(--red-dim);
+    border-color: var(--accent);
+    background: var(--accent-dim);
     transform: translateY(-2px);
   }
   .drop__icon svg { width: 24px; height: 24px; }
@@ -400,7 +403,7 @@
   }
   .drop__title .blink {
     display: inline-block; width: .55ch;
-    background: var(--red);
+    background: var(--accent);
     color: transparent;
     margin-left: 2px;
     animation: caret 1.05s steps(1) infinite;
@@ -414,8 +417,8 @@
   .drop__btn {
     display: inline-flex; align-items: center; gap: .5rem;
     padding: .7rem 1.15rem;
-    background: var(--red);
-    color: #1c0606;
+    background: var(--accent);
+    color: #0e0c1f;
     border: none;
     border-radius: 10px;
     font-family: var(--font-mono);
@@ -425,7 +428,7 @@
   }
   .drop__btn:hover {
     transform: translateY(-1px);
-    box-shadow: 0 8px 24px -8px color-mix(in srgb, var(--red) 50%, transparent);
+    box-shadow: 0 8px 24px -8px color-mix(in srgb, var(--accent) 50%, transparent);
   }
   .drop__formats {
     margin-top: 1.25rem;
@@ -444,9 +447,9 @@
   .privacy {
     margin-top: 1.25rem;
     padding: .85rem 1.1rem;
-    border: 1px solid color-mix(in srgb, var(--red) 25%, var(--border));
+    border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border));
     background:
-      linear-gradient(135deg, var(--red-dim), transparent 60%),
+      linear-gradient(135deg, var(--accent-dim), transparent 60%),
       var(--bg-card);
     border-radius: 12px;
     display: flex; align-items: center; gap: .85rem;
@@ -454,7 +457,7 @@
     font-size: var(--size-small);
     color: var(--text-dim);
   }
-  .privacy svg { width: 18px; height: 18px; color: var(--red); flex-shrink: 0; }
+  .privacy svg { width: 18px; height: 18px; color: var(--accent); flex-shrink: 0; }
   .privacy strong { color: var(--text); font-weight: 600; }
 
   /* ==========================================================
@@ -1688,13 +1691,13 @@
     position: absolute;
     top: 8%; right: -8%;
     width: 38%; aspect-ratio: 1;
-    background: radial-gradient(circle, var(--red-dim), transparent 70%);
+    background: radial-gradient(circle, var(--accent-dim), transparent 70%);
     filter: blur(40px);
     opacity: .55;
     pointer-events: none;
     z-index: -1;
   }
-  .home .section__eyebrow { color: var(--red); }
+  .home .section__eyebrow { color: var(--accent); }
   .home__grid {
     display: grid;
     gap: 1rem;
@@ -1717,13 +1720,13 @@
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(135deg, var(--red-dim), transparent 55%);
+    background: linear-gradient(135deg, var(--accent-dim), transparent 55%);
     opacity: 0;
     transition: opacity .25s var(--ease);
     pointer-events: none;
   }
   .home__card:hover {
-    border-color: color-mix(in srgb, var(--red) 35%, var(--border));
+    border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
     transform: translateY(-2px);
   }
   .home__card:hover::before { opacity: 1; }
@@ -1734,8 +1737,8 @@
   .home__icon {
     width: 36px; height: 36px;
     display: flex; align-items: center; justify-content: center;
-    background: var(--red-dim);
-    color: var(--red);
+    background: var(--accent-dim);
+    color: var(--accent);
     border-radius: 10px;
   }
   .home__icon svg { width: 16px; height: 16px; }
@@ -1764,7 +1767,7 @@
     display: inline-flex;
     align-items: center;
     gap: .5rem;
-    color: var(--red);
+    color: var(--accent);
     font-family: var(--font-mono);
     font-size: var(--size-mono);
     text-decoration: none;
@@ -1848,14 +1851,9 @@
 <main>
   <section class="hero">
     <div class="container">
-      <span class="hero__eyebrow">Permanent redaction. Not a black rectangle.</span>
-      <h1 class="hero__title">
-        Redact PDFs without<br>
-        <span class="accent">losing the rest.</span>
-      </h1>
-      <p class="hero__sub">
-        Your redacted PDF stays selectable and searchable. Targeted text is removed from the file, not hidden under a box.
-      </p>
+      <span class="hero__eyebrow">Local LLM. Document never leaves your device.</span>
+      <h1 class="hero__title">Ask your PDF<br><span class="accent">anything.</span></h1>
+      <p class="hero__sub">Drop a PDF, ask questions, get answers with citations. The model runs in your browser. <strong>Nothing about your document touches a server.</strong></p>
 
       <div class="drop" id="drop" data-active="false" tabindex="0" role="button" aria-label="Drop a PDF here or click to browse">
         <input type="file" id="fileInput" accept="application/pdf,.pdf" hidden>
@@ -1884,7 +1882,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
         </svg>
-        <span><strong>Zero uploads.</strong> Parsed and redacted entirely in your browser.</span>
+        <span><strong>Zero uploads.</strong> Model downloads once, then runs offline.</span>
       </div>
     </div>
   </section>
