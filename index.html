@@ -748,18 +748,42 @@
     overflow: auto;
     padding: 1rem;
     flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: .75rem;
+    scroll-behavior: smooth;
   }
-  .pdf-viewer__canvas-wrap canvas {
-    display: block;
-    width: 100%;
-    height: auto;
+  .pdf-page {
+    position: relative;
     background: #fff;
     border-radius: 4px;
     box-shadow: 0 1px 3px rgba(0,0,0,.25);
+    width: 100%;
+    border: 2px solid transparent;
+    transition: border-color .25s var(--ease), box-shadow .25s var(--ease);
+    overflow: hidden;
   }
-  .pdf-viewer__highlights {
+  .pdf-page__canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 4px;
+  }
+  .pdf-page__highlights {
     position: absolute;
-    top: 1rem; left: 1rem; right: 1rem;
+    inset: 0;
+    pointer-events: none;
+  }
+  .pdf-page__label {
+    position: absolute;
+    top: .35rem; right: .55rem;
+    z-index: 2;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: rgba(0,0,0,.55);
+    color: #fff;
+    padding: .1rem .4rem;
+    border-radius: 4px;
     pointer-events: none;
   }
   .pdf-highlight {
@@ -1447,43 +1471,62 @@
     setTimeout(() => el.classList.remove('is-cited'), 2200);
   }
 
-  // ---- PDF viewer with text-item highlighting ------------------------------
-  let viewerPage = 1;
-  async function showPdfPage(pageNumber, chunk) {
+  // ---- PDF viewer: continuous stacked pages with text-item highlights ------
+  const pageMetas = new Map();   // pageNumber -> { wrap, viewport, page }
+
+  async function renderPdfStack() {
     if (!pdfDoc) return;
-    const wrap   = document.getElementById('pdfCanvasWrap');
-    const canvas = document.getElementById('pdfCanvas');
-    const layer  = document.getElementById('pdfHighlights');
-    const info   = document.getElementById('pdfPageInfo');
-    if (!canvas || !wrap) return;
+    const wrap = document.getElementById('pdfCanvasWrap');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    pageMetas.clear();
+    const paneWidth = (wrap.clientWidth || 600) - 32; // minus padding
 
-    viewerPage = pageNumber;
-    info.textContent = `p.${pageNumber} of ${pdfDoc.numPages}`;
+    for (let i = 1; i <= pdfDoc.numPages; i++) {
+      const page = await pdfDoc.getPage(i);
+      const base = page.getViewport({ scale: 1 });
+      const scale = Math.max(0.5, paneWidth / base.width);
+      const viewport = page.getViewport({ scale });
 
-    const page = await pdfDoc.getPage(pageNumber);
-    const containerWidth = wrap.clientWidth || 600;
-    const base = page.getViewport({ scale: 1 });
-    const scale = Math.max(0.5, containerWidth / base.width);
-    const viewport = page.getViewport({ scale });
-    canvas.width  = viewport.width;
-    canvas.height = viewport.height;
-    canvas.style.width  = '100%';
-    canvas.style.height = 'auto';
-    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+      const pageWrap = document.createElement('div');
+      pageWrap.className = 'pdf-page';
+      pageWrap.dataset.page = String(i);
+      pageWrap.style.aspectRatio = `${viewport.width} / ${viewport.height}`;
 
-    layer.innerHTML = '';
-    layer.style.width  = '100%';
-    layer.style.aspectRatio = `${viewport.width} / ${viewport.height}`;
+      const canvas = document.createElement('canvas');
+      canvas.className = 'pdf-page__canvas';
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
 
+      const overlay = document.createElement('div');
+      overlay.className = 'pdf-page__highlights';
+
+      const label = document.createElement('span');
+      label.className = 'pdf-page__label';
+      label.textContent = `p.${i}`;
+
+      pageWrap.appendChild(canvas);
+      pageWrap.appendChild(overlay);
+      pageWrap.appendChild(label);
+      wrap.appendChild(pageWrap);
+
+      pageMetas.set(i, { wrap: pageWrap, viewport, page });
+      // render in background; don't block the loop on each page's render
+      page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise
+        .catch((err) => console.error('page render', i, err));
+    }
+  }
+
+  function goToPage(pageNumber, chunk) {
+    const meta = pageMetas.get(pageNumber);
+    if (!meta) return;
+    meta.wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.querySelectorAll('.pdf-page__highlights').forEach((o) => { o.innerHTML = ''; });
     if (chunk) {
-      const tc = await page.getTextContent();
-      drawHighlights(layer, tc.items, viewport, chunk.start, chunk.end);
-      // scroll first highlight into view (centered)
-      const first = layer.querySelector('.pdf-highlight');
-      if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      else wrap.scrollTop = 0;
-    } else {
-      wrap.scrollTop = 0;
+      const overlay = meta.wrap.querySelector('.pdf-page__highlights');
+      meta.page.getTextContent().then((tc) => {
+        drawHighlights(overlay, tc.items, meta.viewport, chunk.start, chunk.end);
+      });
     }
   }
 
@@ -1581,14 +1624,9 @@
         ${hasPdf ? `
           <aside class="pdf-viewer">
             <div class="pdf-viewer__head">
-              <button type="button" id="pdfPrev" aria-label="Previous page">&larr;</button>
-              <span class="pdf-viewer__info" id="pdfPageInfo">p.1 of ${pdfDoc.numPages}</span>
-              <button type="button" id="pdfNext" aria-label="Next page">&rarr;</button>
+              <span class="pdf-viewer__info">PDF, ${pdfDoc.numPages} ${pdfDoc.numPages === 1 ? 'page' : 'pages'}, scroll to read</span>
             </div>
-            <div class="pdf-viewer__canvas-wrap" id="pdfCanvasWrap">
-              <canvas id="pdfCanvas"></canvas>
-              <div class="pdf-viewer__highlights" id="pdfHighlights"></div>
-            </div>
+            <div class="pdf-viewer__canvas-wrap" id="pdfCanvasWrap"></div>
           </aside>
         ` : ''}
       </div>
@@ -1603,15 +1641,7 @@
     document.getElementById('chatStop').addEventListener('click', () => {
       if (llmEngine) llmEngine.interruptGenerate();
     });
-    if (hasPdf) {
-      document.getElementById('pdfPrev').addEventListener('click', () => {
-        if (viewerPage > 1) showPdfPage(viewerPage - 1);
-      });
-      document.getElementById('pdfNext').addEventListener('click', () => {
-        if (viewerPage < pdfDoc.numPages) showPdfPage(viewerPage + 1);
-      });
-      showPdfPage(1);
-    }
+    if (hasPdf) renderPdfStack();
   }
 
   async function onAsk(e) {
@@ -1661,7 +1691,7 @@
 
       // Auto-navigate the viewer to the top retrieved chunk before generation starts.
       if (pdfDoc && cites.length > 0) {
-        showPdfPage(cites[0].pageNumber, cites[0]);
+        goToPage(cites[0].pageNumber, cites[0]);
       }
 
       const stream = await llmEngine.chat.completions.create({
@@ -1690,7 +1720,7 @@
         b.addEventListener('click', () => {
           const c = findChunkByMarker(cites, b.dataset.marker);
           if (!c) return;
-          if (pdfDoc) showPdfPage(c.pageNumber, c);
+          if (pdfDoc) goToPage(c.pageNumber, c);
           else        highlightTextSource(asstEl, c.marker);
         });
       });
