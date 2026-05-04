@@ -706,12 +706,37 @@
     border: 1px solid var(--border);
     background: var(--bg-card);
     border-radius: 12px;
-    padding: 1rem;
+    padding: .75rem;
+    display: flex;
+    flex-direction: column;
+    gap: .75rem;
   }
-  .pdf-pane canvas {
-    width: 100%; height: auto; display: block;
+  .pdf-page {
+    position: relative;
     background: #fff;
     border-radius: 4px;
+    width: 100%;
+    border: 2px solid transparent;
+    transition: border-color .25s var(--ease), box-shadow .25s var(--ease);
+    overflow: hidden;
+  }
+  .pdf-page canvas { width: 100%; height: auto; display: block; }
+  .pdf-page__label {
+    position: absolute;
+    top: .35rem; right: .55rem;
+    z-index: 1;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-mute);
+    background: rgba(0,0,0,.6);
+    color: #fff;
+    padding: .1rem .4rem;
+    border-radius: 4px;
+    pointer-events: none;
+  }
+  .pdf-page.is-cited {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-dim);
   }
 
   .cite-chip {
@@ -1289,17 +1314,59 @@
     return { numPages: pdfDoc.numPages, pages };
   }
 
-  async function renderPage(pageNumber) {
+  async function renderPdfPane() {
     if (!pdfDoc) return;
-    const page = await pdfDoc.getPage(pageNumber);
-    const canvas = document.getElementById('pdfCanvas');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const viewport = page.getViewport({ scale: 1.5 });
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-    await page.render({ canvasContext: ctx, viewport }).promise;
-    canvas.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const pane = document.querySelector('.pdf-pane');
+    if (!pane) return;
+    pane.innerHTML = '';
+    const metas = [];
+    for (let i = 1; i <= pdfDoc.numPages; i++) {
+      const page = await pdfDoc.getPage(i);
+      const v = page.getViewport({ scale: 1.5 });
+      const wrap = document.createElement('div');
+      wrap.className = 'pdf-page';
+      wrap.dataset.page = String(i);
+      wrap.style.aspectRatio = `${v.width} / ${v.height}`;
+      const label = document.createElement('span');
+      label.className = 'pdf-page__label';
+      label.textContent = `p.${i}`;
+      wrap.appendChild(label);
+      pane.appendChild(wrap);
+      metas.push({ wrap, page });
+    }
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const wrap = entry.target;
+        if (wrap.dataset.rendered === 'true') continue;
+        wrap.dataset.rendered = 'true';
+        observer.unobserve(wrap);
+        const meta = metas.find((m) => m.wrap === wrap);
+        if (meta) renderPageInto(wrap, meta.page);
+      }
+    }, { root: pane, rootMargin: '600px' });
+    metas.forEach((m) => observer.observe(m.wrap));
+  }
+
+  async function renderPageInto(wrap, page) {
+    const v = page.getViewport({ scale: 1.5 });
+    const canvas = document.createElement('canvas');
+    canvas.width = v.width;
+    canvas.height = v.height;
+    wrap.appendChild(canvas);
+    try {
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport: v }).promise;
+    } catch (err) {
+      console.error('renderPageInto', err);
+    }
+  }
+
+  function highlightPage(pageNumber) {
+    const wrap = document.querySelector(`.pdf-page[data-page="${pageNumber}"]`);
+    if (!wrap) return;
+    wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    wrap.classList.add('is-cited');
+    setTimeout(() => wrap.classList.remove('is-cited'), 2200);
   }
 
   function setStatus(msg) {
@@ -1363,7 +1430,7 @@
             </div>
           </form>
         </div>
-        ${hasPdf ? `<div class="pdf-pane"><canvas id="pdfCanvas"></canvas></div>` : ''}
+        ${hasPdf ? `<div class="pdf-pane"></div>` : ''}
       </div>
     `;
     document.getElementById('chatForm').addEventListener('submit', onAsk);
@@ -1376,7 +1443,7 @@
     document.getElementById('chatStop').addEventListener('click', () => {
       if (llmEngine) llmEngine.interruptGenerate();
     });
-    if (hasPdf) renderPage(1);
+    if (hasPdf) renderPdfPane();
   }
 
   async function onAsk(e) {
@@ -1440,7 +1507,7 @@
         return `<button class="cite-chip" data-page="${c.pageNumber}">[${n}] p.${c.pageNumber}</button>`;
       });
       asstEl.querySelectorAll('.cite-chip').forEach((b) => {
-        b.addEventListener('click', () => renderPage(Number(b.dataset.page)));
+        b.addEventListener('click', () => highlightPage(Number(b.dataset.page)));
       });
     } catch (err) {
       asstEl.textContent = `Error: ${err.message}`;
