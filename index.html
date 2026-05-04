@@ -897,6 +897,9 @@
 </footer>
 
 <script type="module">
+  import * as pdfjs from './vendor/pdf.min.mjs';
+  pdfjs.GlobalWorkerOptions.workerSrc = './vendor/pdf.worker.min.mjs';
+
   // ---- theme toggle ---------------------------------------------------------
   const $themeBtn = document.getElementById('themeBtn');
   const savedTheme = localStorage.getItem('xj-theme');
@@ -907,11 +910,41 @@
     localStorage.setItem('xj-theme', cur);
   });
 
-  // ---- drop zone (minimal — T4 will wire file to text extraction) -----------
+  // ---- drop zone + PDF ingestion -------------------------------------------
   const $drop      = document.getElementById('drop');
   const $fileInput = document.getElementById('fileInput');
   const $pickBtn   = document.getElementById('pickBtn');
   const $workspace = document.querySelector('.workspace');
+  const $mount     = document.getElementById('ask-app');
+
+  async function extractText(file) {
+    const buf = await file.arrayBuffer();
+    const doc = await pdfjs.getDocument({ data: buf }).promise;
+    const pages = [];
+    for (let i = 1; i <= doc.numPages; i++) {
+      const page = await doc.getPage(i);
+      const text = await page.getTextContent();
+      pages.push({
+        pageNumber: i,
+        text: text.items.map((it) => it.str).join(' '),
+      });
+    }
+    return { numPages: doc.numPages, pages };
+  }
+
+  async function handleFile(file) {
+    if (!file || file.type !== 'application/pdf') return;
+    $workspace.removeAttribute('hidden');
+    $mount.textContent = `Reading ${file.name}...`;
+    try {
+      const { numPages, pages } = await extractText(file);
+      const totalChars = pages.reduce((n, p) => n + p.text.length, 0);
+      $mount.textContent = `Read ${numPages} pages, ${totalChars.toLocaleString()} characters.`;
+      window.__askDoc = { file, pages };
+    } catch (err) {
+      $mount.textContent = `Could not read this PDF. ${err.message}`;
+    }
+  }
 
   $pickBtn.addEventListener('click', () => $fileInput.click());
   $drop.addEventListener('click', (e) => {
@@ -919,24 +952,14 @@
       $fileInput.click();
     }
   });
-  $fileInput.addEventListener('change', (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      $workspace.removeAttribute('hidden');
-    }
-  });
+  $fileInput.addEventListener('change', (e) => handleFile(e.target.files?.[0]));
   ['dragenter','dragover'].forEach(ev =>
     $drop.addEventListener(ev, (e) => { e.preventDefault(); $drop.dataset.active = 'true'; })
   );
   ['dragleave','drop'].forEach(ev =>
     $drop.addEventListener(ev, (e) => { e.preventDefault(); $drop.dataset.active = 'false'; })
   );
-  $drop.addEventListener('drop', (e) => {
-    const file = e.dataTransfer?.files?.[0];
-    if (file && file.type === 'application/pdf') {
-      $workspace.removeAttribute('hidden');
-    }
-  });
+  $drop.addEventListener('drop', (e) => handleFile(e.dataTransfer?.files?.[0]));
 
   // ---- toast + verify hooks -------------------------------------------------
   const $toast    = document.getElementById('toast');
