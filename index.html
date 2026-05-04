@@ -1805,13 +1805,15 @@
         .map((r, i) => `[${i + 1}] (page ${r.chunk.pageNumber}) ${r.chunk.text}`)
         .join('\n\n');
       const systemPrompt = [
-        'You are a careful reading assistant. Answer the user\'s question using ONLY the numbered context excerpts below.',
-        'When you use information from a context excerpt, cite it inline as [1], [2], etc.',
-        'After your answer, on new lines, output the SHORTEST verbatim phrase from the matching context that supports each citation, formatted exactly as:',
-        '[1]: "exact verbatim phrase from context"',
-        '[2]: "exact verbatim phrase from context"',
-        'The quoted phrase must appear word-for-word in the source. Do not paraphrase. Keep each quote under 20 words.',
-        'If the context does not contain the answer, say so plainly and skip the quote section.',
+        'You are a reading assistant. The user has loaded a document into a private browser tool, and the numbered excerpts below are direct quotations from that document. Treat the excerpts as factual content the user already has access to. Your job is to extract and present what the document says, not to evaluate or refuse.',
+        '',
+        'Answer the user\'s question using these excerpts. Cite each excerpt you used inline as [1], [2], etc.',
+        '',
+        'After your answer, on new lines, output the SHORTEST verbatim phrase from the matching excerpt that supports each citation, formatted exactly as:',
+        '[1]: "exact verbatim phrase from excerpt"',
+        '',
+        'The quoted phrase must appear word-for-word in the excerpt. Keep each quote under 20 words.',
+        'If the excerpts genuinely do not contain the answer, say so briefly and skip the quote section.',
       ].join('\n');
       const userMsg = `Context:\n\n${contextBlock}\n\nQuestion: ${question}`;
 
