@@ -694,7 +694,86 @@
     color: var(--text-dim);
   }
 
-  .chat { max-width: 760px; margin: 0 auto; }
+  .ask-grid { display: grid; grid-template-columns: 1fr; gap: 1.25rem; }
+  .ask-grid--single .chat { max-width: 760px; margin: 0 auto; }
+  @media (min-width: 1024px) {
+    .ask-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); align-items: start; }
+  }
+
+  .pdf-viewer {
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  @media (min-width: 1024px) {
+    .pdf-viewer {
+      position: sticky;
+      top: 1rem;
+      max-height: calc(100vh - 2rem);
+    }
+  }
+  .pdf-viewer__head {
+    display: flex; align-items: center; gap: .75rem;
+    padding: .55rem .85rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-raised);
+  }
+  .pdf-viewer__info {
+    flex: 1;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: var(--size-mono);
+    color: var(--text-dim);
+  }
+  .pdf-viewer__head button {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    width: 32px; height: 32px;
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 14px;
+    cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .pdf-viewer__head button:hover {
+    border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+    color: var(--accent);
+  }
+  .pdf-viewer__canvas-wrap {
+    position: relative;
+    overflow: auto;
+    padding: 1rem;
+    flex: 1;
+  }
+  .pdf-viewer__canvas-wrap canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    background: #fff;
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.25);
+  }
+  .pdf-viewer__highlights {
+    position: absolute;
+    top: 1rem; left: 1rem; right: 1rem;
+    pointer-events: none;
+  }
+  .pdf-highlight {
+    position: absolute;
+    background: color-mix(in srgb, var(--accent) 35%, transparent);
+    border-radius: 2px;
+    box-shadow: 0 0 0 1px var(--accent);
+    mix-blend-mode: multiply;
+    animation: pdf-flash .8s ease-out;
+  }
+  @keyframes pdf-flash {
+    0%   { background: color-mix(in srgb, var(--accent) 70%, transparent); }
+    100% { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+  }
 
   .sources {
     margin-top: 1rem;
@@ -1335,7 +1414,13 @@
     return { numPages: pdfDoc.numPages, pages };
   }
 
-  function renderSources(asstEl, citations) {
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+  }
+
+  function renderTextSources(asstEl, citations) {
     if (!citations || citations.length === 0) return;
     const sources = document.createElement('details');
     sources.className = 'sources';
@@ -1354,7 +1439,7 @@
     asstEl.appendChild(sources);
   }
 
-  function highlightSource(asstEl, marker) {
+  function highlightTextSource(asstEl, marker) {
     const el = document.getElementById(`source-${asstEl.dataset.msgId}-${marker}`);
     if (!el) return;
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1362,10 +1447,74 @@
     setTimeout(() => el.classList.remove('is-cited'), 2200);
   }
 
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, (c) => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-    }[c]));
+  // ---- PDF viewer with text-item highlighting ------------------------------
+  let viewerPage = 1;
+  async function showPdfPage(pageNumber, chunk) {
+    if (!pdfDoc) return;
+    const wrap   = document.getElementById('pdfCanvasWrap');
+    const canvas = document.getElementById('pdfCanvas');
+    const layer  = document.getElementById('pdfHighlights');
+    const info   = document.getElementById('pdfPageInfo');
+    if (!canvas || !wrap) return;
+
+    viewerPage = pageNumber;
+    info.textContent = `p.${pageNumber} of ${pdfDoc.numPages}`;
+
+    const page = await pdfDoc.getPage(pageNumber);
+    const containerWidth = wrap.clientWidth || 600;
+    const base = page.getViewport({ scale: 1 });
+    const scale = Math.max(0.5, containerWidth / base.width);
+    const viewport = page.getViewport({ scale });
+    canvas.width  = viewport.width;
+    canvas.height = viewport.height;
+    canvas.style.width  = '100%';
+    canvas.style.height = 'auto';
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+
+    layer.innerHTML = '';
+    layer.style.width  = '100%';
+    layer.style.aspectRatio = `${viewport.width} / ${viewport.height}`;
+
+    if (chunk) {
+      const tc = await page.getTextContent();
+      drawHighlights(layer, tc.items, viewport, chunk.start, chunk.end);
+      // scroll first highlight into view (centered)
+      const first = layer.querySelector('.pdf-highlight');
+      if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      else wrap.scrollTop = 0;
+    } else {
+      wrap.scrollTop = 0;
+    }
+  }
+
+  function drawHighlights(layer, items, viewport, start, end) {
+    let pos = 0;
+    const cw = viewport.width;
+    const ch = viewport.height;
+    for (const item of items) {
+      const itemStart = pos;
+      const itemEnd   = pos + item.str.length;
+      if (itemEnd > start && itemStart < end) {
+        const tx = pdfjs.Util.transform(viewport.transform, item.transform);
+        const fontHeight = Math.hypot(tx[2], tx[3]) || (item.height * viewport.scale);
+        const x = tx[4];
+        const y = tx[5] - fontHeight;
+        const w = (item.width || 0) * viewport.scale;
+        const div = document.createElement('div');
+        div.className = 'pdf-highlight';
+        div.style.left   = `${(x / cw) * 100}%`;
+        div.style.top    = `${(y / ch) * 100}%`;
+        div.style.width  = `${(w / cw) * 100}%`;
+        div.style.height = `${(fontHeight / ch) * 100}%`;
+        layer.appendChild(div);
+      }
+      pos = itemEnd + 1;
+    }
+  }
+
+  // chunk lookup so chip clicks can navigate
+  function findChunkByMarker(citations, marker) {
+    return citations.find((c) => c.marker === Number(marker));
   }
 
   function setStatus(msg) {
@@ -1416,16 +1565,32 @@
   }
 
   function renderChat() {
+    const hasPdf = !!pdfDoc;
     $mount.innerHTML = `
-      <div class="chat">
-        <div class="chat__messages" id="chatMessages"></div>
-        <form class="chat__form" id="chatForm">
-          <textarea class="chat__input" id="chatInput" placeholder="Ask a question about this document..." rows="2"></textarea>
-          <div class="chat__actions">
-            <button type="button" class="chat__stop" id="chatStop" hidden>Stop</button>
-            <button type="submit" class="chat__send btn-primary">Send</button>
-          </div>
-        </form>
+      <div class="ask-grid${hasPdf ? '' : ' ask-grid--single'}">
+        <div class="chat">
+          <div class="chat__messages" id="chatMessages"></div>
+          <form class="chat__form" id="chatForm">
+            <textarea class="chat__input" id="chatInput" placeholder="Ask a question about this document..." rows="2"></textarea>
+            <div class="chat__actions">
+              <button type="button" class="chat__stop" id="chatStop" hidden>Stop</button>
+              <button type="submit" class="chat__send btn-primary">Send</button>
+            </div>
+          </form>
+        </div>
+        ${hasPdf ? `
+          <aside class="pdf-viewer">
+            <div class="pdf-viewer__head">
+              <button type="button" id="pdfPrev" aria-label="Previous page">&larr;</button>
+              <span class="pdf-viewer__info" id="pdfPageInfo">p.1 of ${pdfDoc.numPages}</span>
+              <button type="button" id="pdfNext" aria-label="Next page">&rarr;</button>
+            </div>
+            <div class="pdf-viewer__canvas-wrap" id="pdfCanvasWrap">
+              <canvas id="pdfCanvas"></canvas>
+              <div class="pdf-viewer__highlights" id="pdfHighlights"></div>
+            </div>
+          </aside>
+        ` : ''}
       </div>
     `;
     document.getElementById('chatForm').addEventListener('submit', onAsk);
@@ -1438,6 +1603,15 @@
     document.getElementById('chatStop').addEventListener('click', () => {
       if (llmEngine) llmEngine.interruptGenerate();
     });
+    if (hasPdf) {
+      document.getElementById('pdfPrev').addEventListener('click', () => {
+        if (viewerPage > 1) showPdfPage(viewerPage - 1);
+      });
+      document.getElementById('pdfNext').addEventListener('click', () => {
+        if (viewerPage < pdfDoc.numPages) showPdfPage(viewerPage + 1);
+      });
+      showPdfPage(1);
+    }
   }
 
   async function onAsk(e) {
@@ -1481,7 +1655,14 @@
         marker: i + 1,
         pageNumber: r.chunk.pageNumber,
         text: r.chunk.text,
+        start: r.chunk.start,
+        end: r.chunk.end,
       }));
+
+      // Auto-navigate the viewer to the top retrieved chunk before generation starts.
+      if (pdfDoc && cites.length > 0) {
+        showPdfPage(cites[0].pageNumber, cites[0]);
+      }
 
       const stream = await llmEngine.chat.completions.create({
         stream: true,
@@ -1504,9 +1685,14 @@
         if (!c) return `[${n}]`;
         return `<button class="cite-chip" data-marker="${c.marker}">[${n}] p.${c.pageNumber}</button>`;
       });
-      renderSources(asstEl, cites);
+      if (!pdfDoc) renderTextSources(asstEl, cites);
       answerEl.querySelectorAll('.cite-chip').forEach((b) => {
-        b.addEventListener('click', () => highlightSource(asstEl, Number(b.dataset.marker)));
+        b.addEventListener('click', () => {
+          const c = findChunkByMarker(cites, b.dataset.marker);
+          if (!c) return;
+          if (pdfDoc) showPdfPage(c.pageNumber, c);
+          else        highlightTextSource(asstEl, c.marker);
+        });
       });
     } catch (err) {
       answerEl.textContent = `Error: ${err.message}`;
