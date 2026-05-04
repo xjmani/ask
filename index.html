@@ -651,6 +651,37 @@
     color: var(--text-dim);
   }
 
+  .ask-grid { display: grid; grid-template-columns: 1fr; gap: 1.25rem; }
+  @media (min-width: 960px) {
+    .ask-grid { grid-template-columns: 1fr 1fr; align-items: start; }
+    .pdf-pane { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow: auto; }
+  }
+  .pdf-pane {
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    border-radius: 12px;
+    padding: 1rem;
+  }
+  .pdf-pane canvas {
+    width: 100%; height: auto; display: block;
+    background: #fff;
+    border-radius: 4px;
+  }
+
+  .cite-chip {
+    display: inline-flex;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+    border-radius: 6px;
+    padding: .05rem .4rem;
+    margin: 0 .15rem;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .cite-chip:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+
   .chat { display: flex; flex-direction: column; gap: 1rem; }
   .chat__messages {
     display: flex; flex-direction: column; gap: 1rem;
@@ -1114,19 +1145,34 @@
     $fileInput.setAttribute('disabled', 'true');
   }
 
+  let pdfDoc = null;
+
   async function extractText(file) {
     const buf = await file.arrayBuffer();
-    const doc = await pdfjs.getDocument({ data: buf }).promise;
+    pdfDoc = await pdfjs.getDocument({ data: buf }).promise;
     const pages = [];
-    for (let i = 1; i <= doc.numPages; i++) {
-      const page = await doc.getPage(i);
+    for (let i = 1; i <= pdfDoc.numPages; i++) {
+      const page = await pdfDoc.getPage(i);
       const text = await page.getTextContent();
       pages.push({
         pageNumber: i,
         text: text.items.map((it) => it.str).join(' '),
       });
     }
-    return { numPages: doc.numPages, pages };
+    return { numPages: pdfDoc.numPages, pages };
+  }
+
+  async function renderPage(pageNumber) {
+    if (!pdfDoc) return;
+    const page = await pdfDoc.getPage(pageNumber);
+    const canvas = document.getElementById('pdfCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const viewport = page.getViewport({ scale: 1.5 });
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    canvas.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function setStatus(msg) {
@@ -1178,15 +1224,20 @@
 
   function renderChat() {
     $mount.innerHTML = `
-      <div class="chat">
-        <div class="chat__messages" id="chatMessages"></div>
-        <form class="chat__form" id="chatForm">
-          <textarea class="chat__input" id="chatInput" placeholder="Ask a question about this document..." rows="2"></textarea>
-          <div class="chat__actions">
-            <button type="button" class="chat__stop" id="chatStop" hidden>Stop</button>
-            <button type="submit" class="chat__send btn-primary">Send</button>
-          </div>
-        </form>
+      <div class="ask-grid">
+        <div class="chat">
+          <div class="chat__messages" id="chatMessages"></div>
+          <form class="chat__form" id="chatForm">
+            <textarea class="chat__input" id="chatInput" placeholder="Ask a question about this document..." rows="2"></textarea>
+            <div class="chat__actions">
+              <button type="button" class="chat__stop" id="chatStop" hidden>Stop</button>
+              <button type="submit" class="chat__send btn-primary">Send</button>
+            </div>
+          </form>
+        </div>
+        <div class="pdf-pane">
+          <canvas id="pdfCanvas"></canvas>
+        </div>
       </div>
     `;
     document.getElementById('chatForm').addEventListener('submit', onAsk);
@@ -1199,6 +1250,7 @@
     document.getElementById('chatStop').addEventListener('click', () => {
       if (llmEngine) llmEngine.interruptGenerate();
     });
+    renderPage(1);
   }
 
   async function onAsk(e) {
@@ -1246,6 +1298,16 @@
         const delta = chunk.choices?.[0]?.delta?.content || '';
         asstEl.textContent += delta;
       }
+      const cites = JSON.parse(asstEl.dataset.citations || '[]');
+      const rawText = asstEl.textContent;
+      asstEl.innerHTML = rawText.replace(/\[(\d+)\]/g, (_, n) => {
+        const c = cites.find((x) => String(x.marker) === n);
+        if (!c) return `[${n}]`;
+        return `<button class="cite-chip" data-page="${c.pageNumber}">[${n}] p.${c.pageNumber}</button>`;
+      });
+      asstEl.querySelectorAll('.cite-chip').forEach((b) => {
+        b.addEventListener('click', () => renderPage(Number(b.dataset.page)));
+      });
     } catch (err) {
       asstEl.textContent = `Error: ${err.message}`;
     } finally {
