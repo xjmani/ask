@@ -1,0 +1,12 @@
+2ee2f715093aaacc0344bfb1610313eb49a3474e8afde5e4635f30ddfc7615c8  ./ort-wasm-threaded.wasm
+49e26487d87a86cb96f6a21740cf7e678bd43db0ccf4e82a6877a806c4d7d5e4  ./pdf.min.mjs
+7135149f7cffa1a573466c6e4d8423ed73b62fd2332c575bf738a0d033f70df7  ./embeddings/all-MiniLM-L6-v2/config.json
+9261e7d79b44c8195c1cada2b453e55b00aeb81e907a6664974b4d7776172ab3  ./embeddings/all-MiniLM-L6-v2/tokenizer_config.json
+9bd07bababc65f53d061f457233eeae501be7ceb8a2adb9eef52d87fe776d865  ./ort-wasm-simd.wasm
+ac23f2f3cbd519a65a0796f7c79eb34ead4c1f6f31eb06e14ed8a9579d697ef6  ./ort-wasm-simd-threaded.wasm
+adf78adb083a12022ca09ad1612594b4c3b44f37ab9689b82671a2344f0cd606  ./web-llm.mjs
+afdb6f1a0e45b715d0bb9b11772f032c399babd23bfc31fed1c170afc848bdb1  ./embeddings/all-MiniLM-L6-v2/onnx/model_quantized.onnx
+bbdcb6b3c7d294577d806077630460be4e13ca35a345acb5e81188e9649fa74a  ./ort-wasm.wasm
+bcf7cf304e51f470ed59409622b9d6ffbad80dfcf5baf6a40c919e4b9c4ff812  ./transformers.min.js
+d2e6ef4cbc6f0e2c1ccb8a4a71d92d09f6242a96a0af07991f08f31e62cc7181  ./pdf.worker.min.mjs
+da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0  ./embeddings/all-MiniLM-L6-v2/tokenizer.json
