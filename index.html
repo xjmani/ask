@@ -1868,8 +1868,23 @@
     if (e.key === 'Escape' && !$overlay.hidden) minimizeOverlay();
   });
 
-  // ---- WebGPU gate ----------------------------------------------------------
+  // ---- WebGPU + iOS gates --------------------------------------------------
   const hasWebGPU = !!navigator.gpu;
+  // iPadOS 13+ reports `MacIntel` with touch points; treat those as iPad too.
+  function detectIOS() {
+    const ua = navigator.userAgent;
+    if (/iPhone|iPod/.test(ua)) return 'iphone';
+    if (/iPad/.test(ua)) return 'ipad';
+    if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) return 'ipad';
+    return null;
+  }
+  const iosKind = detectIOS();
+  function gateOff() {
+    $drop.setAttribute('aria-disabled', 'true');
+    $drop.style.pointerEvents = 'none';
+    $drop.style.opacity = '0.5';
+    $fileInput.setAttribute('disabled', 'true');
+  }
   if (!hasWebGPU) {
     openOverlay('Browser support');
     $mount.innerHTML = `
@@ -1883,10 +1898,20 @@
         </div>
       </div>
     `;
-    $drop.setAttribute('aria-disabled', 'true');
-    $drop.style.pointerEvents = 'none';
-    $drop.style.opacity = '0.5';
-    $fileInput.setAttribute('disabled', 'true');
+    gateOff();
+  } else if (iosKind) {
+    openOverlay('Device check');
+    $mount.innerHTML = `
+      <div class="intro-card">
+        <div class="intro-card__eyebrow">Device check</div>
+        <h2 class="intro-card__title">${iosKind === 'iphone' ? 'iPhone' : 'iPad'} can't fit the model.</h2>
+        <div class="intro-card__body">
+          <p>The tool downloads about <strong>2 GB</strong> of model weights and stores them in your browser's cache for offline reuse. iOS Safari caps per-site cache storage at a fraction of that, so the download fails partway through with a generic error.</p>
+          <p>Open <strong>ask.xjmani.com</strong> on a desktop or laptop running Safari, Chrome, or Edge. Same tool, same privacy, just enough storage for the model.</p>
+        </div>
+      </div>
+    `;
+    gateOff();
   }
 
   let pdfDoc = null;
@@ -2485,13 +2510,28 @@ Answer: The phone number is +1 555-123-4567 [1].`;
   async function handleFile(file) {
     if (!file || file.type !== 'application/pdf') return;
     openOverlay(file.name);
-    renderPrepCard({
-      verb: 'Reading',
-      filename: file.name,
-      subtitle: 'Extracting text from each page in your browser.',
-    });
+
+    let pages, numPages, embedded;
+
     try {
-      const { numPages, pages } = await extractText(file);
+      renderPrepCard({
+        verb: 'Reading',
+        filename: file.name,
+        subtitle: 'Extracting text from each page in your browser.',
+      });
+      const r = await extractText(file);
+      pages = r.pages; numPages = r.numPages;
+    } catch (err) {
+      renderPrepCard({
+        eyebrow: 'Could not read PDF',
+        verb: 'PDF parse failed.',
+        subtitle: err.message || String(err),
+      });
+      console.error('extractText failed:', err);
+      return;
+    }
+
+    try {
       const chunks = chunkText(pages);
       renderPrepCard({
         verb: 'Indexing',
@@ -2499,7 +2539,7 @@ Answer: The phone number is +1 555-123-4567 [1].`;
         subtitle: `${chunks.length} chunks across ${numPages} ${numPages === 1 ? 'page' : 'pages'}.`,
         percent: 0,
       });
-      const embedded = await embedChunks(chunks, (done, total) => {
+      embedded = await embedChunks(chunks, (done, total) => {
         const pct = Math.round((done / total) * 100);
         renderPrepCard({
           verb: 'Indexing',
@@ -2509,16 +2549,33 @@ Answer: The phone number is +1 555-123-4567 [1].`;
         });
       });
       window.__askDoc = { file, pages, chunks: embedded };
-      await prepareModel();
-      renderChat();
     } catch (err) {
       renderPrepCard({
-        eyebrow: 'Error',
-        verb: 'Could not read this PDF.',
-        subtitle: err.message,
+        eyebrow: 'Could not index PDF',
+        verb: 'Embedding failed.',
+        subtitle: err.message || String(err),
       });
-      console.error(err);
+      console.error('embedChunks failed:', err);
+      return;
     }
+
+    try {
+      await prepareModel();
+    } catch (err) {
+      const raw = String(err && err.message || err);
+      const isStorageErr = /cache|quota|storage|internal/i.test(raw);
+      renderPrepCard({
+        eyebrow: 'Model load failed',
+        verb: isStorageErr ? 'Not enough browser storage.' : 'Could not load the model.',
+        subtitle: isStorageErr
+          ? 'Your browser ran out of cache space while downloading the model. iOS Safari and other mobile browsers cap per-site storage well below the 2 GB the model needs. Open ask.xjmani.com on a desktop or laptop instead.'
+          : raw,
+      });
+      console.error('prepareModel failed:', err);
+      return;
+    }
+
+    renderChat();
   }
 
   $pickBtn.addEventListener('click', () => $fileInput.click());
