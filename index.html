@@ -1061,6 +1061,24 @@
     return out;
   }
 
+  function cosine(a, b) {
+    let dot = 0;
+    for (let i = 0; i < a.length; i++) dot += a[i] * b[i];
+    return dot;
+  }
+
+  async function retrieve(question, k = 4) {
+    const embed = await getEmbedder();
+    const q = await embed(question, { pooling: 'mean', normalize: true });
+    const scored = window.__askDoc.chunks.map((ch, i) => ({
+      index: i,
+      score: cosine(q.data, ch.embedding),
+      chunk: ch,
+    }));
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, k);
+  }
+
   // ---- theme toggle ---------------------------------------------------------
   const $themeBtn = document.getElementById('themeBtn');
   const savedTheme = localStorage.getItem('xj-theme');
@@ -1204,9 +1222,25 @@
 
     stop.hidden = false;
     try {
+      const top = await retrieve(question, 4);
+      const contextBlock = top
+        .map((r, i) => `[${i + 1}] (page ${r.chunk.pageNumber}) ${r.chunk.text}`)
+        .join('\n\n');
+      const systemPrompt = `You are a careful reading assistant. Answer the user's question using ONLY the numbered context excerpts below. When you use information from a context excerpt, cite it inline as [1], [2], etc. If the context does not contain the answer, say so plainly. Do not invent facts.`;
+      const userMsg = `Context:\n\n${contextBlock}\n\nQuestion: ${question}`;
+
+      asstEl.dataset.citations = JSON.stringify(top.map((r, i) => ({
+        marker: i + 1,
+        pageNumber: r.chunk.pageNumber,
+        text: r.chunk.text,
+      })));
+
       const stream = await llmEngine.chat.completions.create({
         stream: true,
-        messages: [{ role: 'user', content: question }],
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user',   content: userMsg },
+        ],
       });
       for await (const chunk of stream) {
         const delta = chunk.choices?.[0]?.delta?.content || '';
