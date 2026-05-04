@@ -1386,29 +1386,45 @@
     return scored.slice(0, k);
   }
 
-  // Split a chunk into "sentence-ish" units, returning text + offset within the chunk.
-  // Falls back to comma-separated clauses when sentence punctuation is sparse
-  // (handles invoices, tables, and other non-prose layouts).
+  // Build candidate spans for refinement. Tries sentence boundaries first;
+  // for invoices, tables, and other non-prose layouts that lack punctuation,
+  // falls back to OVERLAPPING word windows so semantic phrases like
+  // "First Month Free VIP Membership (100% off)" don't get cut between windows.
   function splitSpans(text) {
-    const byPunct = text.split(/(?<=[.!?:;])\s+|\n+/).filter((s) => s.trim().length > 0);
-    if (byPunct.length >= 2) return byPunct;
-    // long single sentence: break on commas
-    const byComma = text.split(/,\s+/).filter((s) => s.trim().length > 0);
-    if (byComma.length >= 2) return byComma;
-    // last resort: break on whitespace into ~80 char windows
-    const words = text.split(/\s+/);
+    const sentence = text.split(/(?<=[.!?])\s+|\n+/).map((s) => s.trim()).filter((s) => s.length > 5);
+    if (sentence.length >= 2) return sentence;
+    const words = text.split(/\s+/).filter((w) => w.length > 0);
     const out = [];
-    let buf = '';
-    for (const w of words) {
-      if ((buf + ' ' + w).length > 80 && buf) { out.push(buf); buf = w; }
-      else buf = buf ? buf + ' ' + w : w;
+    const seen = new Set();
+    const sizes = [6, 10, 16];
+    for (const W of sizes) {
+      const stride = Math.max(1, Math.floor(W / 2));
+      for (let i = 0; i + 2 <= words.length; i += stride) {
+        const win = words.slice(i, i + W).join(' ');
+        if (win.length < 12 || seen.has(win)) continue;
+        seen.add(win);
+        out.push(win);
+        if (i + W >= words.length) break;
+      }
     }
-    if (buf) out.push(buf);
-    return out;
+    return out.length > 0 ? out : [text];
   }
 
-  // Re-rank sentences within a chunk against the question, return the best span
-  // with offsets translated back into the page's joined text coordinate system.
+  // Score each candidate span against the question with embedding similarity.
+  // Boost spans containing exact question keyword matches so that a span
+  // mentioning "discount" beats a span without it for the question
+  // "was a discount applied" even when other words make embeddings ambiguous.
+  function keywordBoost(question, span) {
+    const stop = new Set(['the','a','an','is','was','are','were','be','of','to','in','on','for','and','or','but','this','that','it','as','at','by']);
+    const qWords = new Set(
+      (question.toLowerCase().match(/\w{3,}/g) || []).filter((w) => !stop.has(w))
+    );
+    const sWords = new Set((span.toLowerCase().match(/\w{3,}/g) || []));
+    let hits = 0;
+    for (const w of qWords) if (sWords.has(w)) hits++;
+    return hits;
+  }
+
   async function refineToBestSpan(question, chunk) {
     const spans = splitSpans(chunk.text);
     if (spans.length <= 1) return chunk;
@@ -1416,12 +1432,13 @@
     const qVec = await embed(question, { pooling: 'mean', normalize: true });
     let best = chunk;
     let bestScore = -Infinity;
-    let cursor = 0;
     for (const s of spans) {
-      const idx = chunk.text.indexOf(s, cursor);
+      const idx = chunk.text.indexOf(s);
       if (idx < 0) continue;
       const sVec = await embed(s, { pooling: 'mean', normalize: true });
-      const score = cosine(qVec.data, sVec.data);
+      const sim = cosine(qVec.data, sVec.data);
+      const boost = keywordBoost(question, s) * 0.05;
+      const score = sim + boost;
       if (score > bestScore) {
         bestScore = score;
         best = {
@@ -1431,7 +1448,6 @@
           end:   chunk.start + idx + s.length,
         };
       }
-      cursor = idx + s.length;
     }
     return best;
   }
