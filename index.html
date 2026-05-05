@@ -220,6 +220,20 @@
     z-index: 1;
     padding-top: calc(var(--hdr-h) + env(safe-area-inset-top, 0px));
   }
+  /* iOS Safari's translucent status bar samples page-flow content (not
+     position:fixed elements) for its blur source. Without this, the hero
+     subtitle below shows through the status bar. Paint the would-be empty
+     padding region with solid bg so there's no in-flow content for the
+     bar to sample through. */
+  main::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: calc(var(--hdr-h) + env(safe-area-inset-top, 0px));
+    background: var(--bg);
+    pointer-events: none;
+    z-index: -1;
+  }
 
   /* ==========================================================
      HEADER — fixed + opaque, mirrors the landing page nav. The
