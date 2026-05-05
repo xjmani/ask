@@ -715,8 +715,12 @@
   .progress__text {
     display: block; margin-top: .5rem;
     font-family: var(--font-mono); font-size: var(--size-mono);
-    /* Left-to-right shimmer so static states ("Starting.", "Finalizing.")
-       still read as actively in motion instead of looking frozen. */
+    color: var(--text-dim);
+  }
+  /* Shimmer ONLY on static labels ("Starting.", "Finalizing.", etc).
+     Percentages already convey motion via the ticking numbers, so they
+     stay plain to keep visual focus on the value. */
+  .progress__text--shimmer {
     background: linear-gradient(
       90deg,
       var(--text-dim) 0%,
@@ -733,7 +737,7 @@
     animation: thinking-shine 2.4s linear infinite;
   }
   @media (prefers-reduced-motion: reduce) {
-    .progress__text { animation: none; color: var(--text-dim); -webkit-text-fill-color: var(--text-dim); }
+    .progress__text--shimmer { animation: none; color: var(--text-dim); -webkit-text-fill-color: var(--text-dim); }
   }
 
   /* ============================================================
@@ -2357,6 +2361,15 @@
     return `${pct}%`;
   }
 
+  // Toggles the shimmer animation on the progress label so static text
+  // ("Starting.", "Finalizing.", etc) reads as actively in motion, while
+  // percentages stay plain (the number itself is already the feedback).
+  function setProgressText(el, text) {
+    el.textContent = text;
+    const isPct = /\d\s*%$/.test(text.trim());
+    el.classList.toggle('progress__text--shimmer', !isPct);
+  }
+
   // Render a polished "preparing" card with optional progress bar.
   // Used during PDF read + chunk embedding so the loading states feel
   // consistent with the disclaimer and model-load cards that come next.
@@ -2365,10 +2378,17 @@
       ? `<span class="intro-card__title-verb">${escapeHtml(verb)}</span><span class="intro-card__title-file">${escapeHtml(filename)}</span>`
       : escapeHtml(verb || '');
     const safeSub = subtitle ? `<div class="intro-card__body"><p>${escapeHtml(subtitle)}</p></div>` : '';
+    let barText = '';
+    let barIsLabel = false;
+    if (percent !== null) {
+      if (percent >= 100) { barText = 'Done.'; barIsLabel = true; }
+      else if (percent > 0) { barText = percent + '%'; barIsLabel = false; }
+      else { barText = 'Starting.'; barIsLabel = true; }
+    }
     const bar = percent === null ? '' : `
       <div class="progress">
         <div class="progress__bar"><div class="progress__bar-fill" style="width:${percent}%"></div></div>
-        <span class="progress__text">${percent >= 100 ? 'Done.' : (percent > 0 ? percent + '%' : 'Starting.')}</span>
+        <span class="progress__text${barIsLabel ? ' progress__text--shimmer' : ''}">${barText}</span>
       </div>
     `;
     $mount.innerHTML = `
@@ -2436,7 +2456,7 @@
           await ensureLLM((report) => {
             const pct = Math.round(progressFromReport(report) * 100);
             fill.style.width = `${pct}%`;
-            txt.textContent = progressLabel(report, 'Connecting to Hugging Face.');
+            setProgressText(txt, progressLabel(report, 'Connecting to Hugging Face.'));
           });
           resolve();
         } catch (err) {
@@ -2457,7 +2477,7 @@
         </div>
         <div class="progress">
           <div class="progress__bar"><div class="progress__bar-fill" style="width:0%"></div></div>
-          <span class="progress__text">Reading cache.</span>
+          <span class="progress__text progress__text--shimmer">Reading cache.</span>
         </div>
       </div>
     `;
@@ -2466,7 +2486,7 @@
     await ensureLLM((report) => {
       const pct = Math.round(progressFromReport(report) * 100);
       fill.style.width = `${pct}%`;
-      txt.textContent = progressLabel(report, 'Reading cache.');
+      setProgressText(txt, progressLabel(report, 'Reading cache.'));
     });
   }
 
