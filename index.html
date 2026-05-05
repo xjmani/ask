@@ -1202,7 +1202,9 @@
     color: var(--text);
     border-radius: 10px;
     font-family: var(--font-body);
-    font-size: var(--size-body);
+    /* iOS Safari auto-zooms any input under 16px on focus. Pin at 16px to
+       suppress the zoom regardless of viewport width (covers landscape too). */
+    font-size: 16px;
     resize: vertical;
   }
   .chat__input:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
