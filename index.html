@@ -715,7 +715,25 @@
   .progress__text {
     display: block; margin-top: .5rem;
     font-family: var(--font-mono); font-size: var(--size-mono);
-    color: var(--text-dim);
+    /* Left-to-right shimmer so static states ("Starting.", "Finalizing.")
+       still read as actively in motion instead of looking frozen. */
+    background: linear-gradient(
+      90deg,
+      var(--text-dim) 0%,
+      var(--text-dim) 40%,
+      var(--accent) 50%,
+      var(--text-dim) 60%,
+      var(--text-dim) 100%
+    );
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    animation: thinking-shine 2.4s linear infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .progress__text { animation: none; color: var(--text-dim); -webkit-text-fill-color: var(--text-dim); }
   }
 
   /* ============================================================
