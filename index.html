@@ -220,19 +220,17 @@
     z-index: 1;
     padding-top: calc(var(--hdr-h) + env(safe-area-inset-top, 0px));
   }
-  /* iOS Safari's translucent status bar samples page-flow content (not
-     position:fixed elements) for its blur source. Without this, the hero
-     subtitle below shows through the status bar. Paint the would-be empty
-     padding region with solid bg so there's no in-flow content for the
-     bar to sample through. */
+  /* Solid shield positioned in the safe-area region with the highest
+     possible z-index, ensuring iOS Safari's translucent status bar can
+     only sample uniform color regardless of how it composites content. */
   main::before {
     content: '';
-    position: absolute;
+    position: fixed;
     top: 0; left: 0; right: 0;
-    height: calc(var(--hdr-h) + env(safe-area-inset-top, 0px));
+    height: env(safe-area-inset-top, 0px);
     background: var(--bg);
     pointer-events: none;
-    z-index: -1;
+    z-index: 99999;
   }
 
   /* ==========================================================
