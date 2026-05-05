@@ -212,25 +212,11 @@
      hero doesn't slide under the fixed nav on first paint. */
   :root { --hdr-h: 60px; }
 
-  /* Main is offset for the fixed header. env(safe-area-inset-top) accounts
-     for the iOS notch / dynamic island so content below the bar starts at
-     the right place on every device. */
+  /* Header is now position: sticky (taking real space in flow) so iOS
+     Safari's bar sampler treats it as page content, not a floating overlay. */
   main {
     position: relative;
     z-index: 1;
-    padding-top: calc(var(--hdr-h) + env(safe-area-inset-top, 0px));
-  }
-  /* Solid shield positioned in the safe-area region with the highest
-     possible z-index, ensuring iOS Safari's translucent status bar can
-     only sample uniform color regardless of how it composites content. */
-  main::before {
-    content: '';
-    position: fixed;
-    top: 0; left: 0; right: 0;
-    height: env(safe-area-inset-top, 0px);
-    background: var(--bg);
-    pointer-events: none;
-    z-index: 99999;
   }
 
   /* ==========================================================
@@ -239,7 +225,7 @@
      island) so the status bar area is never transparent.
      ========================================================== */
   .hdr {
-    position: fixed;
+    position: sticky;
     top: 0;
     left: 0;
     right: 0;
