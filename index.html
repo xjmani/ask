@@ -2371,56 +2371,61 @@
   }
 
   // Render a polished "preparing" card with optional progress bar.
-  // First call builds the card; subsequent calls with the same eyebrow+verb
-  // update the bar fill, subtitle, and progress text IN PLACE so the CSS
-  // shimmer animation on .progress__text keeps running. Otherwise we'd
-  // rebuild the DOM on every chunk and the animation would restart at
-  // frame 0 each time, never reaching its visible peak.
+  // Updates in place when possible (so the CSS shimmer animation keeps
+  // playing across progress callbacks instead of restarting at frame 0
+  // on each render). Falls back to rebuild only when the bar presence
+  // changes (Reading -> Indexing transition).
   function renderPrepCard({ eyebrow = 'Preparing', verb, filename, subtitle, percent = null }) {
-    const stageKey = `${eyebrow}|${verb}|${filename || ''}|${percent === null ? 'no-bar' : 'bar'}`;
-    const existing = $mount.querySelector('.intro-card[data-prep-stage]');
-
     function progressBits() {
-      let text = '', isLabel = false;
-      if (percent !== null) {
-        if (percent >= 100) { text = 'Done.'; isLabel = true; }
-        else if (percent > 0) { text = percent + '%'; isLabel = false; }
-        else { text = 'Starting.'; isLabel = true; }
-      }
-      return { text, isLabel };
+      if (percent === null) return null;
+      if (percent >= 100) return { text: 'Done.',     isLabel: true };
+      if (percent > 0)    return { text: percent+'%', isLabel: false };
+      return                     { text: 'Starting.', isLabel: true };
     }
 
-    if (existing && existing.dataset.prepStage === stageKey) {
-      // Same stage: update in place to keep animations running.
-      const subP = existing.querySelector('.intro-card__body p');
-      if (subP && subtitle) subP.textContent = subtitle;
-      if (percent !== null) {
-        const fill = existing.querySelector('.progress__bar-fill');
-        const txt  = existing.querySelector('.progress__text');
+    const card = $mount.querySelector('.intro-card.intro-card--prep');
+    const hasBar = !!card?.querySelector('.progress__text');
+    const wantsBar = percent !== null;
+    const canUpdateInPlace = card && (wantsBar === hasBar);
+
+    if (canUpdateInPlace) {
+      const eyebrowEl = card.querySelector('.intro-card__eyebrow');
+      const verbEl    = card.querySelector('.intro-card__title-verb');
+      const fileEl    = card.querySelector('.intro-card__title-file');
+      const titleEl   = card.querySelector('.intro-card__title');
+      const subP      = card.querySelector('.intro-card__body p');
+      if (eyebrowEl) eyebrowEl.textContent = eyebrow;
+      if (verbEl)    verbEl.textContent = verb || '';
+      else if (titleEl && !filename) titleEl.textContent = verb || '';
+      if (fileEl && filename) fileEl.textContent = filename;
+      if (subP && subtitle)   subP.textContent = subtitle;
+      if (wantsBar) {
+        const bits = progressBits();
+        const fill = card.querySelector('.progress__bar-fill');
+        const txt  = card.querySelector('.progress__text');
         if (fill) fill.style.width = percent + '%';
-        if (txt) {
-          const { text, isLabel } = progressBits();
-          txt.textContent = text;
-          txt.classList.toggle('progress__text--shimmer', isLabel);
+        if (txt)  {
+          txt.textContent = bits.text;
+          txt.classList.toggle('progress__text--shimmer', bits.isLabel);
         }
       }
       return;
     }
 
-    // Different stage: full rebuild.
+    // Rebuild
     const titleHtml = filename
       ? `<span class="intro-card__title-verb">${escapeHtml(verb)}</span><span class="intro-card__title-file">${escapeHtml(filename)}</span>`
       : escapeHtml(verb || '');
     const safeSub = subtitle ? `<div class="intro-card__body"><p>${escapeHtml(subtitle)}</p></div>` : '';
-    const { text: barText, isLabel: barIsLabel } = progressBits();
-    const bar = percent === null ? '' : `
+    const bits = progressBits();
+    const bar = !bits ? '' : `
       <div class="progress">
         <div class="progress__bar"><div class="progress__bar-fill" style="width:${percent}%"></div></div>
-        <span class="progress__text${barIsLabel ? ' progress__text--shimmer' : ''}">${barText}</span>
+        <span class="progress__text${bits.isLabel ? ' progress__text--shimmer' : ''}">${bits.text}</span>
       </div>
     `;
     $mount.innerHTML = `
-      <div class="intro-card" data-prep-stage="${stageKey}">
+      <div class="intro-card intro-card--prep">
         <div class="intro-card__eyebrow">${escapeHtml(eyebrow)}</div>
         <h2 class="intro-card__title">${titleHtml}</h2>
         ${safeSub}
