@@ -1572,16 +1572,16 @@
   env.localModelPath = './vendor/embeddings/';
   env.backends.onnx.wasm.wasmPaths = './vendor/';
 
-  // Default desktop model (~2 GB) and a mobile fallback (~350 MB Qwen 2.5
-  // 0.5B) that fits inside the per-origin Cache Storage caps mobile browsers
-  // enforce. Tested 1B and that gets evicted under iOS pressure; 0.5B is the
-  // smallest size class that has any chance of staying cached on phones.
+  // Default desktop model (~2 GB) and a mobile fallback (Qwen 2.5 1.5B,
+  // ~900 MB) that's the smallest model in this stack that produces usable
+  // document Q&A answers. Smaller models like 0.5B fit more comfortably in
+  // mobile cache but their answers are too weak for the use case.
   const MODEL_DEFAULT = 'Llama-3.2-3B-Instruct-q4f16_1-MLC';
-  const MODEL_LIGHT   = 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC';
+  const MODEL_LIGHT   = 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC';
   let chosenModelId = MODEL_DEFAULT;
   function modelLabel() {
     return chosenModelId === MODEL_LIGHT
-      ? 'Qwen 2.5 0.5B, on-device'
+      ? 'Qwen 2.5 1.5B, on-device'
       : 'Llama 3.2 3B, on-device';
   }
   let llmEngine = null;
@@ -1951,7 +1951,7 @@
         <div class="intro-card__eyebrow">Device check</div>
         <h2 class="intro-card__title">Mobile storage is tight for AI models.</h2>
         <div class="intro-card__body">
-          <p>The desktop tool runs a 2 GB model that won't fit in mobile browser cache. We can try a much smaller <strong>350 MB Qwen 2.5 0.5B</strong> model instead. It fits more reliably on phones, but answers will be noticeably less polished than the desktop default.</p>
+          <p>The desktop tool runs a 2 GB model that won't fit in mobile browser cache. We can try a smaller <strong>900 MB Qwen 2.5 1.5B</strong> model instead. It fits on most phones, but answers will be noticeably less polished than the desktop default.</p>
           ${homeScreenHint}
           <p class="intro-card__sub">For best results, open <strong>ask.xjmani.com</strong> on a desktop or laptop instead.</p>
         </div>
@@ -2288,7 +2288,7 @@
 
   function showModelDownloadCard() {
     return new Promise((resolve, reject) => {
-      const sizeLabel = chosenModelId === MODEL_LIGHT ? '350 MB' : '2 GB';
+      const sizeLabel = chosenModelId === MODEL_LIGHT ? '900 MB' : '2 GB';
       $mount.innerHTML = `
         <div class="intro-card">
           <div class="intro-card__eyebrow">First-time setup</div>
@@ -2471,7 +2471,17 @@
       const contextBlock = chosenChunks
         .map((c, i) => `[${i + 1}] (page ${c.pageNumber}) ${c.text}`)
         .join('\n\n');
-      const systemPrompt = `You are a reading assistant. The numbered passages below come from a document the user has loaded into a private browser tool. Answer the user's question directly in 1-2 sentences using only those passages, then cite which passage you used as [1], [2], etc. Do not invent facts. If the passages don't contain the answer, say so plainly.
+      // Smaller models follow shorter, more directive prompts better; long
+      // prose with negative instructions ("don't preface with...") tends to
+      // confuse them. Use a tight prompt for the mobile model and keep the
+      // fuller one for the desktop default.
+      const systemPrompt = chosenModelId === MODEL_LIGHT
+        ? `Read the passages below. Answer the question briefly using only those passages. Cite as [1], [2]. If the answer isn't in the passages, say so.
+
+Example:
+Q: What is the phone number?
+A: +1 555-123-4567 [1]`
+        : `You are a reading assistant. The numbered passages below come from a document the user has loaded into a private browser tool. Answer the user's question directly in 1-2 sentences using only those passages, then cite which passage you used as [1], [2], etc. Do not invent facts. If the passages don't contain the answer, say so plainly.
 
 Answer directly. Do not begin with phrases like "According to the document," "Based on the excerpt," or any other preamble. Just give the answer.
 
@@ -2676,7 +2686,7 @@ Answer: The phone number is +1 555-123-4567 [1].`;
         eyebrow: 'Model load failed',
         verb: isStorageErr ? 'Not enough browser storage.' : 'Could not load the model.',
         subtitle: isStorageErr
-          ? 'Your browser ran out of cache space while downloading the model. Mobile browsers cap per-site storage well below the size the default model needs. Open ask.xjmani.com on a desktop or laptop, or refresh and choose the smaller 0.5B model from the device-check screen.'
+          ? 'Your browser ran out of cache space while downloading the model. Mobile browsers cap per-site storage well below the size the default model needs. Open ask.xjmani.com on a desktop or laptop, or refresh and choose the smaller 1.5B model from the device-check screen.'
           : raw,
       });
       console.error('prepareModel failed:', err);
