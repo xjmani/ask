@@ -2885,13 +2885,36 @@ Answer: The phone number is +1 555-123-4567 [1].`;
     renderChat();
   }
 
-  $pickBtn.addEventListener('click', () => $fileInput.click());
+  // Always clear the file input value before opening the picker. iOS Safari
+  // suppresses the change event when the same file is reselected, and after
+  // bfcache restore the input may still hold the previous file's reference.
+  function openPicker() {
+    $fileInput.value = '';
+    $fileInput.click();
+  }
+  $pickBtn.addEventListener('click', openPicker);
   $drop.addEventListener('click', (e) => {
     if (e.target === $drop || e.target.closest('.drop__icon, .drop__title, .drop__sub')) {
-      $fileInput.click();
+      openPicker();
     }
   });
-  $fileInput.addEventListener('change', (e) => handleFile(e.target.files?.[0]));
+  $fileInput.addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (file) handleFile(file);
+    e.target.value = '';
+  });
+
+  // bfcache: when the page is restored from history (back navigation),
+  // reset transient state so the user can load a fresh PDF without a manual
+  // refresh. Specifically: clear the file input, and if scroll was locked
+  // for an overlay that's no longer relevant, unlock it.
+  window.addEventListener('pageshow', (e) => {
+    if (!e.persisted) return;
+    $fileInput.value = '';
+    if ($overlay.hidden && document.body.style.position === 'fixed') {
+      unlockScroll();
+    }
+  });
   ['dragenter','dragover'].forEach(ev =>
     $drop.addEventListener(ev, (e) => { e.preventDefault(); $drop.dataset.active = 'true'; })
   );
