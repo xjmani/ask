@@ -47,7 +47,7 @@
                           font and Type1 parsing.
 -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; worker-src 'self' blob:; img-src 'self' data: blob:; connect-src 'self' https://huggingface.co https://*.huggingface.co https://*.hf.co https://raw.githubusercontent.com; object-src 'none'; base-uri 'self'; form-action 'self';" />
-<meta name="theme-color" content="#08090a" />
+<meta name="theme-color" id="themeColorMeta" content="#08090a" />
 <meta name="color-scheme" content="dark light" />
 <title>Ask · xjmani</title>
 <meta name="description" content="Ask questions about a PDF in your browser. The model runs on your device. Nothing about your document touches a server." />
@@ -1904,12 +1904,24 @@
 
   // ---- theme toggle ---------------------------------------------------------
   const $themeBtn = document.getElementById('themeBtn');
+  const $themeColorMeta = document.getElementById('themeColorMeta');
+  // iOS Safari tints the status bar / address bar from <meta theme-color>.
+  // We toggle theme client-side via data-theme, so the meta has to track it.
+  // Without this, the bar stays whatever color the meta was at page load,
+  // which looks broken when the user switches modes.
+  function syncThemeColor() {
+    if (!$themeColorMeta) return;
+    const isLight = document.documentElement.dataset.theme === 'light';
+    $themeColorMeta.setAttribute('content', isLight ? '#f8f8f8' : '#08090a');
+  }
   const savedTheme = localStorage.getItem('xj-theme');
   if (savedTheme) document.documentElement.dataset.theme = savedTheme;
+  syncThemeColor();
   $themeBtn.addEventListener('click', () => {
     const cur = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
     document.documentElement.dataset.theme = cur;
     localStorage.setItem('xj-theme', cur);
+    syncThemeColor();
   });
 
   // ---- drop zone + PDF ingestion -------------------------------------------
