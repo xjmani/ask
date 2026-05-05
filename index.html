@@ -1922,19 +1922,41 @@
   const $resumeLabel  = document.getElementById('askResumeLabel');
   const $mount     = document.getElementById('ask-app');
 
+  // iOS Safari treats `overflow: hidden` on body as advisory and still
+  // scrolls the page when an input gets focus. The reliable iOS scroll lock
+  // pins body via position: fixed and offsets it by the current scrollY,
+  // then restores both on unlock so the user lands where they were.
+  let savedScrollY = 0;
   function lockScroll() {
+    savedScrollY = window.scrollY;
     document.documentElement.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${savedScrollY}px`;
+    document.body.style.left = '0';
+    document.body.style.right = '0';
+    document.body.style.width = '100%';
     document.body.style.overflow = 'hidden';
   }
   function unlockScroll() {
     document.documentElement.style.overflow = '';
+    document.body.style.position = '';
+    document.body.style.top = '';
+    document.body.style.left = '';
+    document.body.style.right = '';
+    document.body.style.width = '';
     document.body.style.overflow = '';
+    window.scrollTo(0, savedScrollY);
   }
   function openOverlay(title) {
     if (title) $overlayTitle.textContent = title;
     $overlay.hidden = false;
     $resume.hidden = true;
     lockScroll();
+    if (window.visualViewport) {
+      const v = window.visualViewport;
+      $overlay.style.top = v.offsetTop + 'px';
+      $overlay.style.height = v.height + 'px';
+    }
   }
   function minimizeOverlay() {
     $overlay.hidden = true;
@@ -1953,18 +1975,22 @@
     if (e.key === 'Escape' && !$overlay.hidden) minimizeOverlay();
   });
 
-  // On mobile, when the on-screen keyboard opens or closes, the visual
-  // viewport changes size but our fixed overlay does not. Pin overlay
-  // height to the visual viewport so the textarea stays above the keyboard,
-  // and scroll messages to the bottom so the latest content is visible.
+  // On mobile, when the on-screen keyboard opens or closes, iOS Safari
+  // shifts and resizes the visual viewport relative to the layout viewport.
+  // A fixed-position overlay anchored to layout-viewport coords ends up
+  // exposing the page underneath through the address bar / status bar
+  // areas. Pin both the top offset and the height to the visual viewport
+  // so the overlay always exactly covers the visible area.
   if (window.visualViewport) {
+    const v = window.visualViewport;
     const syncVViewport = () => {
       if ($overlay.hidden) return;
-      $overlay.style.height = window.visualViewport.height + 'px';
+      $overlay.style.top = v.offsetTop + 'px';
+      $overlay.style.height = v.height + 'px';
       scrollMessagesToBottom(true);
     };
-    window.visualViewport.addEventListener('resize', syncVViewport);
-    window.visualViewport.addEventListener('scroll', syncVViewport);
+    v.addEventListener('resize', syncVViewport);
+    v.addEventListener('scroll', syncVViewport);
   }
 
   // ---- WebGPU + mobile gates -----------------------------------------------
@@ -2482,7 +2508,19 @@
     // bubble (and the thinking indicator that will appear) are visible
     // above the keyboard rather than hidden behind it.
     chatInput.addEventListener('focus', () => {
-      setTimeout(() => scrollMessagesToBottom(true), 220);
+      // Force-sync the overlay to the visual viewport before iOS has a
+      // chance to scroll the underlying page, then scroll the messages
+      // list once the keyboard animation has settled.
+      const sync = () => {
+        if (window.visualViewport) {
+          const v = window.visualViewport;
+          $overlay.style.top = v.offsetTop + 'px';
+          $overlay.style.height = v.height + 'px';
+        }
+        scrollMessagesToBottom(true);
+      };
+      requestAnimationFrame(sync);
+      setTimeout(sync, 250);
     });
     document.getElementById('chatStop').addEventListener('click', () => {
       if (llmEngine) llmEngine.interruptGenerate();
