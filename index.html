@@ -665,6 +665,15 @@
   .intro-card__body p:last-child { margin-bottom: 0; }
   .intro-card__body strong { color: var(--text); font-weight: 600; }
   .intro-card__sub { font-size: var(--size-small); color: var(--text-mute); }
+  .intro-card__list {
+    margin: 0 0 .85rem;
+    padding-left: 1.1rem;
+    color: var(--text-dim);
+    line-height: 1.55;
+  }
+  .intro-card__list li { margin-bottom: .35rem; }
+  .intro-card__list li:last-child { margin-bottom: 0; }
+  .intro-card__list strong { color: var(--text); font-weight: 600; }
   .intro-card__actions {
     margin-top: 1.5rem;
     display: flex;
@@ -1076,6 +1085,32 @@
   .chat__recovery { display: flex; flex-direction: column; gap: .75rem; }
   .chat__recovery p { margin: 0; color: var(--text-dim); line-height: 1.55; }
   .chat__recovery button { align-self: flex-start; }
+
+  /* Quiet inset note in the chat scroll. Used by the periodic tip system
+     to surface usage advice (close tabs, try desktop, etc) without making
+     it look like a chat bubble. Rendered between user/assistant turns. */
+  .chat__tip {
+    display: flex;
+    align-items: flex-start;
+    gap: .6rem;
+    margin: .25rem auto;
+    max-width: 38rem;
+    padding: .65rem .85rem;
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    color: var(--text-mute);
+    font-size: var(--size-small);
+    line-height: 1.5;
+  }
+  .chat__tip__dot {
+    flex-shrink: 0;
+    width: 6px; height: 6px;
+    margin-top: .45rem;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .chat__tip__body { flex: 1; }
+  .chat__tip__body strong { color: var(--text); font-weight: 600; }
   /* Pending state: assistant message is showing the thinking indicator
      before the first token arrives. Strip bubble chrome so the indicator
      reads as inline text in the message flow. */
@@ -2334,6 +2369,54 @@
     try { return localStorage.getItem(DISCLAIMER_KEY) === '1'; }
     catch { return false; }
   }
+
+  // Mobile-only stability warning. Shown after the AI risks card on the
+  // first run for any device that hits the mobile path. Not relevant on
+  // desktop, where the GPU/memory budget is much higher.
+  const STABILITY_KEY = 'ask-stability-v1';
+  function stabilityAccepted() {
+    try { return localStorage.getItem(STABILITY_KEY) === '1'; }
+    catch { return false; }
+  }
+
+  // In-chat tips schedule: surface at message N where N doubles each time.
+  // The tip pools run out before the schedule does; once exhausted the
+  // chat goes silent. State is per-page-load (not persisted) so each fresh
+  // session sees the early advice again, which matches when the user is
+  // most likely to hit problems.
+  const TIP_THRESHOLDS = [3, 6, 12, 24, 48, 96];
+  const MOBILE_TIPS = [
+    'How are the answers feeling? On mobile we run a 1B model. Open <strong>ask.xjmani.com</strong> on a desktop and you get the 3B version, which reasons noticeably better.',
+    'If the tool feels slow, closing other browser tabs frees up the memory the model is sharing the device with.',
+    'Long PDFs work better on desktop. The mobile model trades reasoning depth for fitting on the device.',
+    'Refreshing the page clears the conversation while keeping the loaded model. Useful when long chats start drifting.',
+    'Hitting repeated crashes? Clear this site\'s data in your browser settings, then reload. The model redownloads in the background.',
+  ];
+  const DESKTOP_TIPS = [
+    'Each answer cites the page it came from. Click a citation to verify the quote against the original.',
+    'If a quote feels off, scroll to the source page in the PDF panel. The model sometimes paraphrases instead of quoting verbatim.',
+    'Focused questions give better answers than broad ones. Asking about one section beats asking across hundreds of pages.',
+    'Your document never leaves this tab. Open Network in DevTools to confirm: it stays empty after the model finishes loading.',
+    'Reloading the page clears the conversation while keeping the model warm. Useful when answers start drifting after long sessions.',
+  ];
+  let userMsgCount = 0;
+  let tipIndex = 0;
+  function maybeInsertChatTip() {
+    if (tipIndex >= TIP_THRESHOLDS.length) return;
+    if (userMsgCount !== TIP_THRESHOLDS[tipIndex]) return;
+    const pool = isMobile ? MOBILE_TIPS : DESKTOP_TIPS;
+    const html = pool[tipIndex];
+    tipIndex++;
+    if (!html) return;
+    const messages = document.getElementById('chatMessages');
+    if (!messages) return;
+    const tip = document.createElement('div');
+    tip.className = 'chat__tip';
+    tip.setAttribute('role', 'note');
+    tip.innerHTML = `<span class="chat__tip__dot" aria-hidden="true"></span><div class="chat__tip__body">${html}</div>`;
+    messages.appendChild(tip);
+    scrollMessagesToBottom(false);
+  }
   // Derive a 0..1 progress value from WebLLM's report. The `progress` float
   // stays at 0 during the OPFS cache phase, so as a fallback we parse the
   // "[N/M]" chunk counter that WebLLM embeds in `report.text` and use that.
@@ -2456,6 +2539,36 @@
     });
   }
 
+  // Surfaces the realities of running a language model on a phone before
+  // the user invests time in the model download. Two concrete fixes are
+  // listed because both have shown up repeatedly in real Safari sessions.
+  function showStabilityWarning() {
+    return new Promise((resolve) => {
+      $mount.innerHTML = `
+        <div class="intro-card">
+          <div class="intro-card__eyebrow">Mobile is experimental</div>
+          <h2 class="intro-card__title">Crashes happen here.</h2>
+          <div class="intro-card__body">
+            <p>Running a language model on a phone is at the edge of what mobile browsers can handle. The tab can freeze or reload itself, and there is no way to fully prevent it.</p>
+            <p>Two things help, before you start:</p>
+            <ul class="intro-card__list">
+              <li><strong>Close every other browser tab.</strong> Each open tab competes for the memory the model needs.</li>
+              <li><strong>Clear this site's data</strong> in your browser settings if you've used the tool today already. Old cached model files can collide with the current version and cause freezes.</li>
+            </ul>
+            <p class="intro-card__sub">On desktop, none of this matters.</p>
+          </div>
+          <div class="intro-card__actions">
+            <button class="btn-primary" id="acceptStabilityBtn">Got it</button>
+          </div>
+        </div>
+      `;
+      document.getElementById('acceptStabilityBtn').addEventListener('click', () => {
+        try { localStorage.setItem(STABILITY_KEY, '1'); } catch {}
+        resolve();
+      });
+    });
+  }
+
   function showModelDownloadCard() {
     return new Promise((resolve, reject) => {
       const sizeLabel = chosenModelId === MODEL_LIGHT ? '700 MB' : '2 GB';
@@ -2525,11 +2638,58 @@
 
   async function prepareModel() {
     if (!disclaimerAccepted()) await showDisclaimer();
+    if (isMobile && !stabilityAccepted()) await showStabilityWarning();
     let cached = false;
     try { cached = await webllm.hasModelInCache(chosenModelId, webllm.prebuiltAppConfig); }
     catch { cached = false; }
     if (cached) await loadModelFromCache();
     else        await showModelDownloadCard();
+  }
+
+  // Try to delete every model id this site has ever cached, including legacy
+  // ones from earlier mobile/desktop combinations. Most of these will not be
+  // present on a given browser; the failures are silent. Used by the storage
+  // recovery card so the user can free OPFS space without leaving the page.
+  async function clearAllModelCaches() {
+    const candidates = [
+      MODEL_DEFAULT,
+      MODEL_LIGHT,
+      'Qwen2.5-0.5B-Instruct-q4f16_1-MLC',
+      'Qwen2.5-1.5B-Instruct-q4f16_1-MLC',
+      'Llama-3.2-3B-Instruct-q4f16_1-MLC',
+      'Llama-3.2-1B-Instruct-q4f16_1-MLC',
+    ];
+    await Promise.all(candidates.map((id) =>
+      webllm.deleteModelAllInfoInCache(id, webllm.prebuiltAppConfig).catch(() => {})
+    ));
+  }
+
+  // Storage-recovery card: WebLLM ran into the per-origin quota during model
+  // download. We surface a one-tap cleanup that nukes every model file this
+  // site has cached and reloads. Most often triggered by stale model files
+  // from prior dev iterations sharing the same origin.
+  function renderStorageRecovery({ deviceMobile }) {
+    const desktopCopy = `Your browser ran out of cache space for the model. The button below clears every model file this site has cached, then reloads. Older model versions can pile up here when the tool is updated.`;
+    const mobileCopy = `Your browser ran out of cache space for the model. The button below clears every model file this site has cached, then reloads. If the error returns after that, open ask.xjmani.com on a desktop instead.`;
+    $mount.innerHTML = `
+      <div class="intro-card">
+        <div class="intro-card__eyebrow">Model load failed</div>
+        <h2 class="intro-card__title">Not enough browser storage.</h2>
+        <div class="intro-card__body">
+          <p>${deviceMobile ? mobileCopy : desktopCopy}</p>
+        </div>
+        <div class="intro-card__actions">
+          <button class="btn-primary" id="clearCacheBtn">Clear cached models and retry</button>
+        </div>
+      </div>
+    `;
+    document.getElementById('clearCacheBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('clearCacheBtn');
+      btn.setAttribute('disabled', 'true');
+      btn.textContent = 'Clearing...';
+      try { await clearAllModelCaches(); } catch {}
+      location.reload();
+    });
   }
 
   function renderChat() {
@@ -2790,6 +2950,9 @@ Answer: The phone number is +1 555-123-4567 [1].`;
           }
         });
       });
+
+      userMsgCount++;
+      maybeInsertChatTip();
     } catch (err) {
       stopThinking();
       const raw = String(err && err.message || err);
@@ -2870,14 +3033,19 @@ Answer: The phone number is +1 555-123-4567 [1].`;
       await prepareModel();
     } catch (err) {
       const raw = String(err && err.message || err);
-      const isStorageErr = /cache|quota|storage|internal/i.test(raw);
-      renderPrepCard({
-        eyebrow: 'Model load failed',
-        verb: isStorageErr ? 'Not enough browser storage.' : 'Could not load the model.',
-        subtitle: isStorageErr
-          ? 'Your browser ran out of cache space while downloading the model. Mobile browsers cap per-site storage well below the size the default model needs. Open ask.xjmani.com on a desktop or laptop, or refresh and choose the smaller 1B model from the device-check screen.'
-          : raw,
-      });
+      // Match real storage-quota signals only. Earlier versions also matched
+      // "cache" and "internal", which trip on unrelated WebLLM errors and
+      // misclassify them as storage problems.
+      const isStorageErr = /QuotaExceededError|StorageQuotaExceeded|exceeded.*quota|insufficient.*storage|out of (memory|space|storage|disk)/i.test(raw);
+      if (isStorageErr) {
+        renderStorageRecovery({ deviceMobile: isMobile });
+      } else {
+        renderPrepCard({
+          eyebrow: 'Model load failed',
+          verb: 'Could not load the model.',
+          subtitle: raw,
+        });
+      }
       console.error('prepareModel failed:', err);
       return;
     }
