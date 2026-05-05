@@ -741,7 +741,12 @@
      ============================================================ */
   .ask-overlay {
     position: fixed;
-    inset: 0;
+    top: 0; left: 0; right: 0;
+    /* Dynamic viewport height accounts for mobile browser chrome and the
+       on-screen keyboard. Layout viewport (100vh) doesn't shrink when the
+       iOS keyboard opens, which would push our textarea under the keyboard. */
+    height: 100vh;
+    height: 100dvh;
     z-index: 100;
     background: var(--bg);
     display: grid;
@@ -1893,6 +1898,20 @@
     if (e.key === 'Escape' && !$overlay.hidden) minimizeOverlay();
   });
 
+  // On mobile, when the on-screen keyboard opens or closes, the visual
+  // viewport changes size but our fixed overlay does not. Pin overlay
+  // height to the visual viewport so the textarea stays above the keyboard,
+  // and scroll messages to the bottom so the latest content is visible.
+  if (window.visualViewport) {
+    const syncVViewport = () => {
+      if ($overlay.hidden) return;
+      $overlay.style.height = window.visualViewport.height + 'px';
+      scrollMessagesToBottom(true);
+    };
+    window.visualViewport.addEventListener('resize', syncVViewport);
+    window.visualViewport.addEventListener('scroll', syncVViewport);
+  }
+
   // ---- WebGPU + mobile gates -----------------------------------------------
   const hasWebGPU = !!navigator.gpu;
   // Mobile browsers (iOS Safari, Android Chrome, etc.) cap per-origin Cache
@@ -2235,7 +2254,10 @@
   function progressLabel(report, idleText = 'Initializing.') {
     const p = progressFromReport(report);
     const pct = Math.round(p * 100);
-    if (pct >= 100) return 'Ready.';
+    // At 100% the weights are downloaded but WebLLM is still compiling
+    // shaders for the user's GPU; the reload() promise hasn't resolved yet.
+    // "Finalizing." is honest about the few-seconds gap before chat opens.
+    if (pct >= 100) return 'Finalizing.';
     if (pct <= 0)   return idleText;
     return `${pct}%`;
   }
@@ -2394,11 +2416,18 @@
       </div>
     `;
     document.getElementById('chatForm').addEventListener('submit', onAsk);
-    document.getElementById('chatInput').addEventListener('keydown', (e) => {
+    const chatInput = document.getElementById('chatInput');
+    chatInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         document.getElementById('chatForm').requestSubmit();
       }
+    });
+    // After the keyboard opens, scroll the messages list so the latest
+    // bubble (and the thinking indicator that will appear) are visible
+    // above the keyboard rather than hidden behind it.
+    chatInput.addEventListener('focus', () => {
+      setTimeout(() => scrollMessagesToBottom(true), 220);
     });
     document.getElementById('chatStop').addEventListener('click', () => {
       if (llmEngine) llmEngine.interruptGenerate();
