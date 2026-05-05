@@ -2074,39 +2074,79 @@
     try { return await navigator.storage.persist(); }
     catch { return false; }
   }
+  // Some browsing contexts (Chrome incognito, Safari Private Browsing, low
+  // free disk) cap per-origin storage well below the ~2 GB the default
+  // model needs. Probe the quota up front so we can route those sessions
+  // through the soft gate instead of letting WebLLM hit QuotaExceeded
+  // partway through download. The threshold leaves headroom for shaders,
+  // embeddings, and PDF state on top of the model weights.
+  const STORAGE_CONSTRAINED_BYTES = 3 * 1024 * 1024 * 1024;
+  async function detectStorageConstrained() {
+    if (!navigator.storage || !navigator.storage.estimate) return false;
+    try {
+      const { quota } = await navigator.storage.estimate();
+      if (typeof quota !== 'number') return false;
+      return quota < STORAGE_CONSTRAINED_BYTES;
+    } catch { return false; }
+  }
   function gateOff() {
     $drop.setAttribute('aria-disabled', 'true');
     $drop.style.pointerEvents = 'none';
     $drop.style.opacity = '0.5';
     $fileInput.setAttribute('disabled', 'true');
   }
-  if (!hasWebGPU) {
-    openOverlay('Browser support');
-    $mount.innerHTML = `
-      <div class="intro-card webgpu-gate">
-        <div class="intro-card__eyebrow">Browser check</div>
-        <h2 class="intro-card__title">This tool needs WebGPU.</h2>
-        <div class="intro-card__body">
-          <p>WebGPU is the browser feature that lets the language model run on your GPU instead of a server. Without it, the model can't load.</p>
-          <p>Supported browsers: <strong>Chrome 121+</strong>, <strong>Edge 121+</strong>, <strong>Safari 18+</strong> on macOS Sonoma or newer. Firefox does not yet ship WebGPU on by default.</p>
-          <p><a href="https://caniuse.com/webgpu">Check WebGPU support for your browser.</a></p>
+  function clearGate() {
+    $drop.removeAttribute('aria-disabled');
+    $drop.style.pointerEvents = '';
+    $drop.style.opacity = '';
+    $fileInput.removeAttribute('disabled');
+    $overlay.hidden = true;
+    $overlayTitle.textContent = '';
+    $resume.hidden = true;
+    unlockScroll();
+  }
+
+  (async () => {
+    if (!hasWebGPU) {
+      openOverlay('Browser support');
+      $mount.innerHTML = `
+        <div class="intro-card webgpu-gate">
+          <div class="intro-card__eyebrow">Browser check</div>
+          <h2 class="intro-card__title">This tool needs WebGPU.</h2>
+          <div class="intro-card__body">
+            <p>WebGPU is the browser feature that lets the language model run on your GPU instead of a server. Without it, the model can't load.</p>
+            <p>Supported browsers: <strong>Chrome 121+</strong>, <strong>Edge 121+</strong>, <strong>Safari 18+</strong> on macOS Sonoma or newer. Firefox does not yet ship WebGPU on by default.</p>
+            <p><a href="https://caniuse.com/webgpu">Check WebGPU support for your browser.</a></p>
+          </div>
         </div>
-      </div>
-    `;
-    gateOff();
-  } else if (isMobile) {
+      `;
+      gateOff();
+      return;
+    }
+    const lowQuota = !isMobile && await detectStorageConstrained();
+    if (!isMobile && !lowQuota) return;
+
     openOverlay('Device check');
-    const homeScreenHint = !isStandalone ? `
+    const homeScreenHint = (isMobile && !isStandalone) ? `
       <p class="intro-card__sub">For better stability, install the tool to your home screen using your browser's <strong>"Add to Home Screen"</strong> option, then open it from there. Installed pages get a larger storage budget.</p>
     ` : '';
+    const title = isMobile
+      ? 'Mobile storage is tight for AI models.'
+      : 'Storage is tight on this browser.';
+    const body = isMobile
+      ? `<p>The desktop tool runs a 2 GB model that won't fit in mobile browser cache. We can try a smaller <strong>700 MB Llama 3.2 1B</strong> model instead. It fits on most phones, but answers will be noticeably less polished than the desktop default.</p>`
+      : `<p>This browser session limits how much data we can cache. The default 2 GB model won't fit. We can try a smaller <strong>700 MB Llama 3.2 1B</strong> model instead. It works, but answers will be noticeably less polished than the default.</p>`;
+    const closingSub = isMobile
+      ? `<p class="intro-card__sub">For best results, open <strong>ask.xjmani.com</strong> on a desktop or laptop instead.</p>`
+      : `<p class="intro-card__sub">Private and incognito windows cap storage well below normal browsing. Open the tool in a regular window if you want the bigger model.</p>`;
     $mount.innerHTML = `
       <div class="intro-card">
         <div class="intro-card__eyebrow">Device check</div>
-        <h2 class="intro-card__title">Mobile storage is tight for AI models.</h2>
+        <h2 class="intro-card__title">${title}</h2>
         <div class="intro-card__body">
-          <p>The desktop tool runs a 2 GB model that won't fit in mobile browser cache. We can try a smaller <strong>700 MB Llama 3.2 1B</strong> model instead. It fits on most phones, but answers will be noticeably less polished than the desktop default.</p>
+          ${body}
           ${homeScreenHint}
-          <p class="intro-card__sub">For best results, open <strong>ask.xjmani.com</strong> on a desktop or laptop instead.</p>
+          ${closingSub}
         </div>
         <div class="intro-card__actions">
           <button class="btn-primary" id="useLightModelBtn">Try the small model</button>
@@ -2117,16 +2157,9 @@
     document.getElementById('useLightModelBtn').addEventListener('click', async () => {
       chosenModelId = MODEL_LIGHT;
       await requestPersistentStorage();
-      $drop.removeAttribute('aria-disabled');
-      $drop.style.pointerEvents = '';
-      $drop.style.opacity = '';
-      $fileInput.removeAttribute('disabled');
-      $overlay.hidden = true;
-      $overlayTitle.textContent = '';
-      $resume.hidden = true;
-      unlockScroll();
+      clearGate();
     });
-  }
+  })();
 
   let pdfDoc = null;
 
@@ -2401,6 +2434,10 @@
   ];
   let userMsgCount = 0;
   let tipIndex = 0;
+  // While the assistant is mid-answer we lock the Send button so a new
+  // question can't be queued behind the in-flight stream. Stop stays
+  // active for explicit interrupt.
+  let isAnswering = false;
   function maybeInsertChatTip() {
     if (tipIndex >= TIP_THRESHOLDS.length) return;
     if (userMsgCount !== TIP_THRESHOLDS[tipIndex]) return;
@@ -2773,12 +2810,22 @@
 
   async function onAsk(e) {
     e.preventDefault();
+    if (isAnswering) return;
     const input    = document.getElementById('chatInput');
     const messages = document.getElementById('chatMessages');
     const stop     = document.getElementById('chatStop');
+    const sendBtn  = document.querySelector('.chat__send');
     const question = input.value.trim();
     if (!question) return;
     input.value = '';
+
+    // Tips live between turns. When the user sends the next question,
+    // any tip currently showing is stale (their attention has moved on),
+    // so clear them before appending the new message.
+    messages.querySelectorAll('.chat__tip').forEach((t) => t.remove());
+
+    isAnswering = true;
+    if (sendBtn) sendBtn.setAttribute('disabled', 'true');
 
     const userEl = document.createElement('div');
     userEl.className = 'chat__msg chat__msg--user';
@@ -2974,6 +3021,8 @@ Answer: The phone number is +1 555-123-4567 [1].`;
     } finally {
       stopThinking();
       stop.hidden = true;
+      isAnswering = false;
+      if (sendBtn) sendBtn.removeAttribute('disabled');
     }
   }
 
